@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #f5f1e8;
+  --panel: #fffcf5;
+  --panel-strong: #f0e6d2;
+  --ink: #1d2522;
+  --muted: #62706a;
+  --line: #ded3bd;
+  --leaf: #2f6f4e;
+  --leaf-dark: #214f39;
+  --crop: #d9a441;
+  --rust: #aa5739;
+  --sky: #d8eef0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(216, 238, 240, 0.85), transparent 34rem),
+    linear-gradient(135deg, #f8f4eb 0%, #edf4e8 46%, #f6efe2 100%);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.eyebrow {
+  color: var(--leaf-dark);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+button {
+  cursor: pointer;
+}
+
+.focus-ring:focus-visible {
+  outline: 3px solid rgba(47, 111, 78, 0.35);
+  outline-offset: 2px;
+}

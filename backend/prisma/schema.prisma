@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  role          String
+  name          String
+  phone         String      @unique
+  location      String
+  kycVerified   Boolean     @default(false)
+  cropBatches   CropBatch[]
+  ordersAsBuyer Order[]     @relation("BuyerOrders")
+}
+
+model CropBatch {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId     String      @db.ObjectId
+  owner       User        @relation(fields: [ownerId], references: [id])
+  cropType    String
+  quantityKg  Int
+  pricePerKg  Float
+  status      String
+  storageId   String?     @db.ObjectId
+  orderItems  OrderItem[]
+  bids        Bid[]
+}
+
+model Order {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  buyerId       String      @db.ObjectId
+  buyer         User        @relation("BuyerOrders", fields: [buyerId], references: [id])
+  transporterId String?     @db.ObjectId
+  escrowStatus  String
+  items         OrderItem[]
+  payments      Payment[]
+  dispute       Dispute?
+}
+
+model OrderItem {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  orderId    String    @db.ObjectId
+  batchId    String    @db.ObjectId
+  quantityKg Int
+  order      Order     @relation(fields: [orderId], references: [id])
+  batch      CropBatch @relation(fields: [batchId], references: [id])
+}
+
+model Bid {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  batchId    String    @db.ObjectId
+  batch      CropBatch @relation(fields: [batchId], references: [id])
+  buyerId    String    @db.ObjectId
+  offerPrice Float
+  status     String
+}
+
+model Payment {
+  id      String @id @default(auto()) @map("_id") @db.ObjectId
+  orderId String @db.ObjectId
+  order   Order  @relation(fields: [orderId], references: [id])
+  payerId String @db.ObjectId
+  payeeId String @db.ObjectId
+  amount  Float
+  type    String
+  status  String
+}
+
+model Dispute {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId        String   @unique @db.ObjectId
+  order          Order    @relation(fields: [orderId], references: [id])
+  raisedById     String   @db.ObjectId
+  status         String
+  resolutionNote String?
+  createdAt      DateTime @default(now())
+}
+
+model Rating {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  fromId    String   @db.ObjectId
+  toId      String   @db.ObjectId
+  orderId   String   @db.ObjectId
+  score     Int
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+model StorageLedger {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  batchId        String    @db.ObjectId
+  storageId      String    @db.ObjectId
+  checkInDate    DateTime  @default(now())
+  checkOutDate   DateTime?
+  dailyRentPerKg Float
+}
+
+model Notification {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  toUserId String   @db.ObjectId
+  channel  String
+  message  String
+  sentAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  actorId   String   @db.ObjectId
+  action    String
+  entityId  String   @db.ObjectId
+  createdAt DateTime @default(now())
+}
+
+model QualityCheck {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  batchId   String   @db.ObjectId
+  checkedBy String   @db.ObjectId
+  stage     String
+  photoUrl  String
+  score     Int?
+  createdAt DateTime @default(now())
+}
+
+model PriceBenchmark {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  cropType    String
+  mandiPrice  Float
+  platformAvg Float
+  recordedAt  DateTime @default(now())
+}

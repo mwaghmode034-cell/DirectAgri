@@ -1,0 +1,16 @@
+{
+  "name": "directagri",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "web:dev": "npm --workspace frontend run dev",
+    "web:build": "npm --workspace frontend run build",
+    "api:dev": "npm --workspace backend run dev",
+    "api:start": "npm --workspace backend run start",
+    "api:seed": "npm --workspace backend run seed"
+  }
+}
