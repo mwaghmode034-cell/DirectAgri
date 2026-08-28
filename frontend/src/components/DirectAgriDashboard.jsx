@@ -11,11 +11,12 @@ import {
   Plus,
   ShieldCheck,
   Star,
-  Upload
+  Upload,
+  X
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { forecast as demoForecast, initialBatches, kpis, parseListing, planRoute, roles, translations } from "@/lib/demo-data";
+import { roles, translations, planRoute } from "@/lib/demo-data";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { getSession, signOut } from "@/lib/auth-client";
 import { applyLocale, dashboardTranslations, getLocale, languageOptions, setLocale } from "@/lib/i18n";
@@ -24,11 +25,12 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const router = useRouter();
   const role = initialRole;
   const [locale, setCurrentLocale] = useState(getLocale);
-  const [batches, setBatches] = useState(initialBatches);
-  const [listing, setListing] = useState("2.5 tons onion from Nashik at Rs 23 per kg, ready tomorrow");
-  const [bidBatch, setBidBatch] = useState("B-1402");
+  const [batches, setBatches] = useState([]);
+  const [listing, setListing] = useState("");
+  const [bidBatch, setBidBatch] = useState("");
   const [qualityScore, setQualityScore] = useState(89);
   const [isListing, setIsListing] = useState(false);
+  const [listingReview, setListingReview] = useState(null);
   const [listingError, setListingError] = useState("");
   const [isSubmittingBid, setIsSubmittingBid] = useState(false);
   const [bidMessage, setBidMessage] = useState("");
@@ -40,7 +42,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const [availableOrder, setAvailableOrder] = useState(null);
   const [transporterMessage, setTransporterMessage] = useState("");
   const [governmentStats, setGovernmentStats] = useState(null);
-  const [forecastData, setForecastData] = useState(demoForecast);
+  const [forecastData, setForecastData] = useState([]);
   const t = { ...(translations[locale] ?? translations.en), ...(dashboardTranslations[locale] ?? dashboardTranslations.en) };
   const farmerName = getSession()?.user?.name;
   const activeBatches = batches.filter((batch) => batch.status !== "SOLD");
@@ -79,8 +81,8 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
 
   useEffect(() => {
     apiGet("/api/forecast").then(({ forecast: savedForecast }) => {
-      if (savedForecast?.length) setForecastData(savedForecast);
-    }).catch(() => setForecastData(demoForecast));
+      setForecastData(savedForecast ?? []);
+    }).catch(() => setForecastData([]));
   }, []);
 
   useEffect(() => {
@@ -93,11 +95,28 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
     setLocale(nextLocale);
   }
 
-  async function addListing() {
+  async function reviewListing() {
     setIsListing(true);
     setListingError("");
     try {
-      const { batch } = await apiPost("/api/crop-batches", { text: listing }, "farmer");
+      const parsed = await apiPost("/api/nlp-parse", { text: listing });
+      setListingReview(parsed);
+    } catch (error) {
+      setListingError(error.message);
+    } finally {
+      setIsListing(false);
+    }
+  }
+
+  async function verifyListing() {
+    setIsListing(true);
+    setListingError("");
+    try {
+      const { batch } = await apiPost("/api/crop-batches", {
+        cropType: listingReview.crop,
+        quantityKg: Number(listingReview.quantityKg),
+        pricePerKg: Number(listingReview.pricePerKg)
+      }, "farmer");
       setBatches((current) => [
         {
           ...batch,
@@ -107,6 +126,8 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
         },
         ...current
       ]);
+      setListingReview(null);
+      setListing("");
     } catch (error) {
       setListingError(error.message);
     } finally {
@@ -229,14 +250,12 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
                 <p className="mt-3 max-w-2xl text-base text-[var(--muted)]">{t.subhead}</p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:min-w-[26rem]">
-                {kpis.map((kpi, index) => {
-                  const Icon = kpi.icon;
-                  const labels = [t.margin, t.participants, t.active, t.uplift];
+                {(governmentStats?.kpis ?? []).map((kpi) => {
                   return (
                     <div key={kpi.label} className="rounded-lg border border-[var(--line)] bg-white p-3">
-                      <Icon size={18} className="text-[var(--rust)]" aria-hidden="true" />
+                      <BarChart3 size={18} className="text-[var(--rust)]" aria-hidden="true" />
                       <p className="mt-2 text-2xl font-bold">{kpi.value}</p>
-                      <p className="text-xs font-semibold text-[var(--muted)]">{labels[index] ?? kpi.label}</p>
+                      <p className="text-xs font-semibold text-[var(--muted)]">{kpi.label}</p>
                     </div>
                   );
                 })}
@@ -246,7 +265,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
 
           <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
-              {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} addListing={addListing} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} />}
+              {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} reviewListing={reviewListing} verifyListing={verifyListing} listingReview={listingReview} setListingReview={setListingReview} cancelReview={() => { setListingReview(null); setListingError(""); }} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} />}
               {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} t={t} />}
               {role === "transporter" && <TransporterPanel route={route} availableOrder={availableOrder} acceptDelivery={acceptDelivery} transporterMessage={transporterMessage} t={t} />}
               {role === "storage" && <StoragePanel batches={activeBatches} qualityScore={qualityScore} setQualityScore={setQualityScore} updateStorage={updateStorage} isStorageAction={isStorageAction} storageMessage={storageMessage} t={t} />}
@@ -258,7 +277,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
                   <p className="text-sm font-semibold text-[var(--leaf)]">{t.demand}</p>
                   <h3 className="text-xl font-bold">{t.forecast}</h3>
                 </div>
-                <span className="rounded-md bg-[var(--panel-strong)] px-3 py-1 text-sm font-semibold">{t.mocked}</span>
+                <span className="rounded-md bg-[var(--panel-strong)] px-3 py-1 text-sm font-semibold">{forecastData.length} {t.records}</span>
               </div>
               <div className="mt-5 h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -282,25 +301,51 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   );
 }
 
-function FarmerPanel({ listing, setListing, addListing, batches, isListing, listingError, farmerName, t }) {
-  const parsed = parseListing(listing);
+function FarmerPanel({ listing, setListing, reviewListing, verifyListing, listingReview, setListingReview, cancelReview, batches, isListing, listingError, farmerName, t }) {
   const ownListings = batches.filter((batch) => farmerName && batch.farmer === farmerName).length;
   return (
     <>
       <PanelTitle icon={MessageSquareText} label={t.farmerPanel} title={t.listing} />
       <textarea className="focus-ring mt-4 min-h-28 w-full rounded-md border border-[var(--line)] bg-white p-4" value={listing} onChange={(event) => setListing(event.target.value)} aria-label="Crop listing message" />
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <ParsedTile label={t.crop} value={parsed.crop} />
-        <ParsedTile label={t.quantity} value={`${(parsed.quantityKg ?? 0).toLocaleString()} ${t.kg}`} />
-        <ParsedTile label={t.price} value={`₹${parsed.pricePerKg}/${t.kg}`} />
-      </div>
-      <button className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-60" onClick={addListing} disabled={isListing}>
+      <button className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-60" onClick={reviewListing} disabled={isListing || !listing.trim()}>
         <Plus size={18} aria-hidden="true" />
-        {isListing ? t.saving : t.listCrop}
+        {isListing ? "Reading listing..." : "Submit for review"}
       </button>
+      {listingReview && (
+        <div className="mt-4 rounded-lg border border-[var(--leaf)] bg-white p-4" role="region" aria-label="Review crop listing">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--leaf)]">Gemini recorded</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Verify the details before publishing this crop listing.</p>
+            </div>
+            <button className="focus-ring rounded-md border border-[var(--line)] p-2" onClick={cancelReview} aria-label="Cancel listing review" title="Cancel review"><X size={17} /></button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <ReviewField label={t.crop} value={listingReview.crop} onChange={(value) => setListingReview((current) => ({ ...current, crop: value }))} />
+            <ReviewField label={`${t.quantity} (${t.kg})`} type="number" value={listingReview.quantityKg} onChange={(value) => setListingReview((current) => ({ ...current, quantityKg: value }))} />
+            <ReviewField label={`${t.price} / ${t.kg}`} type="number" value={listingReview.pricePerKg} onChange={(value) => setListingReview((current) => ({ ...current, pricePerKg: value }))} />
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button className="focus-ring inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={verifyListing} disabled={isListing || !listingReview.crop || Number(listingReview.quantityKg) <= 0 || Number(listingReview.pricePerKg) <= 0}>
+              <Check size={18} />
+              {isListing ? "Saving..." : "Verify and list"}
+            </button>
+            <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold" onClick={cancelReview}>Cancel</button>
+          </div>
+        </div>
+      )}
       {listingError && <p className="mt-3 text-sm font-semibold text-[var(--rust)]" role="alert">{listingError}</p>}
       <p className="mt-4 text-sm text-[var(--muted)]">{ownListings} {t.ownListings}</p>
     </>
+  );
+}
+
+function ReviewField({ label, type = "text", value, onChange }) {
+  return (
+    <label className="text-sm font-semibold">
+      {label}
+      <input className="focus-ring mt-2 min-h-11 w-full rounded-md border border-[var(--line)] bg-white px-3" type={type} min={type === "number" ? "0.01" : undefined} step={type === "number" ? "0.01" : undefined} value={value ?? ""} onChange={(event) => onChange(type === "number" ? event.target.value : event.target.value)} />
+    </label>
   );
 }
 

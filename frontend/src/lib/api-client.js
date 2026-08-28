@@ -15,7 +15,6 @@ async function send(method, path, body, role) {
       method,
       headers: {
         ...requestHeaders(),
-        ...(role ? { "x-demo-role": role } : {})
       },
       body: body === undefined ? undefined : JSON.stringify(body)
     });

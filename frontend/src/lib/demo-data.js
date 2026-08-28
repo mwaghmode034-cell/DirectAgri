@@ -1,13 +1,4 @@
-import {
-  BarChart3,
-  Boxes,
-  Building2,
-  IndianRupee,
-  Landmark,
-  Sprout,
-  Tractor,
-  Truck
-} from "lucide-react";
+import { Boxes, Building2, Landmark, Sprout, Truck } from "lucide-react";
 
 export const roles = [
   { id: "farmer", label: "Farmer", icon: Sprout },
@@ -83,97 +74,6 @@ translations.kn = { headline: "ಜಮೀನಿನಿಂದ ಖರೀದಿದಾ
 
 for (const locale of Object.keys(translations)) {
   translations[locale] = { ...translations.en, ...translations[locale] };
-}
-
-export const initialBatches = [
-  {
-    id: "B-1402",
-    farmer: "Asha Pawar",
-    crop: "Onion",
-    village: "Pimpalgaon",
-    district: "Nashik",
-    quantityKg: 2400,
-    pricePerKg: 22,
-    status: "ON_FARM",
-    quality: 91,
-    lat: 20.17,
-    lng: 73.99
-  },
-  {
-    id: "B-1730",
-    farmer: "Ramesh Jadhav",
-    crop: "Tomato",
-    village: "Sinnar",
-    district: "Nashik",
-    quantityKg: 1800,
-    pricePerKg: 18,
-    status: "STORED",
-    quality: 84,
-    lat: 19.84,
-    lng: 74.0
-  },
-  {
-    id: "B-2044",
-    farmer: "Meera More",
-    crop: "Pomegranate",
-    village: "Baramati",
-    district: "Pune",
-    quantityKg: 950,
-    pricePerKg: 92,
-    status: "ON_FARM",
-    quality: 95,
-    lat: 18.15,
-    lng: 74.58
-  },
-  {
-    id: "B-2218",
-    farmer: "Iqbal Shaikh",
-    crop: "Grapes",
-    village: "Niphad",
-    district: "Nashik",
-    quantityKg: 1250,
-    pricePerKg: 74,
-    status: "IN_TRANSIT",
-    quality: 88,
-    lat: 20.08,
-    lng: 74.11
-  }
-];
-
-export const forecast = [
-  { crop: "Onion", demand: 82, mandi: 18, platform: 22 },
-  { crop: "Tomato", demand: 64, mandi: 14, platform: 18 },
-  { crop: "Grapes", demand: 76, mandi: 62, platform: 74 },
-  { crop: "Pomegranate", demand: 88, mandi: 76, platform: 92 }
-];
-
-export const kpis = [
-  { label: "Farmer margin recovered", value: "31%", icon: IndianRupee },
-  { label: "Verified participants", value: "1,284", icon: Tractor },
-  { label: "Active crop batches", value: "426", icon: Boxes },
-  { label: "Mandi benchmark uplift", value: "18.6%", icon: BarChart3 }
-];
-
-export function parseListing(input) {
-  const lower = input.toLowerCase();
-  const crop =
-    ["onion", "tomato", "grapes", "pomegranate", "wheat", "rice"].find((item) => lower.includes(item)) ??
-    "Mixed Produce";
-  const quantityMatch = lower.match(/(\d+(?:\.\d+)?)\s*(ton|tons|tonne|tonnes|kg|kgs|quintal|quintals)/);
-  const priceMatch = lower.match(/(?:rs|₹|inr|price|rate)\s*\.?\s*(\d+(?:\.\d+)?)/);
-  const quantity = quantityMatch
-    ? Math.round(
-      Number(quantityMatch[1]) *
-      (quantityMatch[2].startsWith("ton") ? 1000 : quantityMatch[2].startsWith("quintal") ? 100 : 1)
-    )
-    : 500;
-  const price = priceMatch ? Number(priceMatch[1]) : forecast.find((item) => item.crop.toLowerCase() === crop)?.platform ?? 25;
-
-  return {
-    crop: crop.replace(/\b\w/g, (char) => char.toUpperCase()),
-    quantityKg: quantity,
-    pricePerKg: price
-  };
 }
 
 export function planRoute(batches) {

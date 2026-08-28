@@ -6,8 +6,6 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { ObjectId } from "mongodb";
 import { z } from "zod";
-import { kpis } from "./data/demo-data.js";
-import { demoUserMiddleware } from "./lib/auth.js";
 import { parseListing } from "./lib/nlp.js";
 import { assertCanUpdate } from "./lib/rbac.js";
 import { planRoute } from "./lib/route-planner.js";
@@ -37,8 +35,6 @@ app.use(helmet());
 app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://localhost:3000" }));
 app.use(express.json());
 app.use(morgan("tiny"));
-app.use(demoUserMiddleware);
-
 app.get("/health", async (request, response, next) => {
   try {
     await getDatabase();
@@ -363,7 +359,15 @@ app.get("/api/government/stats", requireAuth, async (request, response, next) =>
       database.collection("cropBatches").distinct("district")
     ]);
     const auditEvents = await database.collection("auditLogs").countDocuments();
-    response.json({ kpis, adoption: { verifiedParticipants, districtsCovered: districts.length, activeBatches, openDisputes, auditEvents } });
+    response.json({
+      kpis: [
+        { label: "Verified participants", value: String(verifiedParticipants) },
+        { label: "Active crop batches", value: String(activeBatches) },
+        { label: "Districts covered", value: String(districts.length) },
+        { label: "Audit events", value: String(auditEvents) }
+      ],
+      adoption: { verifiedParticipants, districtsCovered: districts.length, activeBatches, openDisputes, auditEvents }
+    });
   } catch (error) {
     next(error);
   }

@@ -7,14 +7,6 @@ import { useRouter } from "next/navigation";
 import { signIn, signUp } from "@/lib/auth-client";
 import { applyLocale, authTranslations, getLocale, languageOptions, setLocale } from "@/lib/i18n";
 
-const demoAccounts = [
-    ["Farmer", "farmer@directagri.dev"],
-    ["Buyer", "buyer@directagri.dev"],
-    ["Transporter", "transporter@directagri.dev"],
-    ["Storage", "storage@directagri.dev"],
-    ["Government", "government@directagri.dev"]
-];
-
 export default function AuthForm({ mode = "login" }) {
     const isSignUp = mode === "signup";
     const router = useRouter();
@@ -45,11 +37,6 @@ export default function AuthForm({ mode = "login" }) {
             setError(submitError.message);
             setIsSubmitting(false);
         }
-    }
-
-    function fillDemo(email) {
-        setForm((current) => ({ ...current, email, password: "demo1234" }));
-        setError("");
     }
 
     return (
@@ -85,16 +72,6 @@ export default function AuthForm({ mode = "login" }) {
                         {error && <p className="rounded-lg bg-[#fbe9e3] px-3 py-2 text-sm font-semibold text-[var(--rust)]" role="alert">{error}</p>}
                         <button className="focus-ring flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[var(--leaf)] px-4 font-semibold text-white disabled:opacity-60" disabled={isSubmitting}>{isSubmitting ? t.opening : isSignUp ? t.submitCreate : t.submitLogin}<ArrowRight size={18} /></button>
                     </form>
-                    {!isSignUp && (
-                        <div className="mt-6 rounded-xl border border-[var(--line)] bg-white p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{t.demo}</p>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                {demoAccounts.map(([label, email]) => (
-                                    <button key={email} type="button" className="rounded-md border border-[var(--line)] px-2.5 py-1.5 text-xs font-semibold" onClick={() => fillDemo(email)}>{label}</button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </section>
         </main>
