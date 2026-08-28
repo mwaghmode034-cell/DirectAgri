@@ -11,9 +11,23 @@ import { parseListing } from "./lib/nlp.js";
 import { assertCanUpdate } from "./lib/rbac.js";
 import { planRoute } from "./lib/route-planner.js";
 import { errorHandler } from "./middleware/error-handler.js";
-import { login, register } from "./lib/auth-api.js";
-import { getDatabase } from "./config/mongodb.js";
+import { forgotPassword, login, register, resetPassword } from "./lib/auth-api.js";
+import { getDatabase, isMemoryStore } from "./config/mongodb.js";
 import { requireAuth } from "./lib/auth-api.js";
+
+function unwrapDocument(result) {
+  if (result == null) return null;
+  if (Object.prototype.hasOwnProperty.call(result, "lastErrorObject") && Object.prototype.hasOwnProperty.call(result, "value")) {
+    return result.value ?? null;
+  }
+  return result;
+}
+
+function locationParts(user) {
+  const location = user?.location ?? "Pimpalgaon, Nashik";
+  const [village, district] = String(location).split(",").map((part) => part.trim());
+  return { village: village || "Pimpalgaon", district: district || "Nashik" };
+}
 
 const app = express();
 const port = process.env.PORT ?? 4000;
@@ -24,12 +38,19 @@ app.use(express.json());
 app.use(morgan("tiny"));
 app.use(demoUserMiddleware);
 
-app.get("/health", (request, response) => {
-  response.json({ ok: true, service: "directagri-api" });
+app.get("/health", async (request, response, next) => {
+  try {
+    await getDatabase();
+    response.json({ ok: true, service: "directagri-api", store: isMemoryStore() ? "memory" : "mongodb" });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/auth/signup", register);
 app.post("/api/auth/login", login);
+app.post("/api/auth/forgot-password", forgotPassword);
+app.post("/api/auth/reset-password", resetPassword);
 
 app.get("/api/crop-batches", requireAuth, async (request, response, next) => {
   try {
@@ -52,16 +73,19 @@ app.post("/api/crop-batches", requireAuth, async (request, response, next) => {
       })
       .parse(request.body);
     const parsed = body.text ? parseListing(body.text) : {};
+    const { village, district } = locationParts(request.authUser);
     const batch = {
       ownerId: request.authUser.id,
       farmer: request.authUser.name,
       crop: body.cropType ?? parsed.crop ?? "Mixed Produce",
-      village: request.user.location.split(",")[0],
-      district: request.user.location.split(",")[1]?.trim() ?? "Nashik",
+      village,
+      district,
       quantityKg: body.quantityKg ?? parsed.quantityKg ?? 500,
       pricePerKg: body.pricePerKg ?? parsed.pricePerKg ?? 25,
       status: "ON_FARM",
-      quality: 86
+      quality: 86,
+      lat: 20.05 + Math.random() / 6,
+      lng: 73.9 + Math.random() / 5
     };
 
     const result = await (await getDatabase()).collection("cropBatches").insertOne({ ...batch, createdAt: new Date() });
@@ -95,14 +119,21 @@ async function recordAudit(action, entityId, user) {
   await database.collection("auditLogs").insertOne({ actorId: user.id, actorName: user.name, actorRole: user.role, action, entityId, createdAt: new Date() });
 }
 
-app.patch("/api/crop-batches/:id", (request, response, next) => {
+app.patch("/api/crop-batches/:id", requireAuth, async (request, response, next) => {
   try {
-    const fields = Object.keys(request.body);
-    assertCanUpdate(request.user.role, fields);
+    const fields = Object.keys(request.body ?? {});
+    assertCanUpdate(request.authUser.role, fields);
+    if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: "Invalid crop batch id." });
+    const updated = unwrapDocument(await (await getDatabase()).collection("cropBatches").findOneAndUpdate(
+      { _id: new ObjectId(request.params.id) },
+      { $set: request.body },
+      { returnDocument: "after" }
+    ));
+    if (!updated) return response.status(404).json({ error: "Crop batch was not found." });
+    await recordAudit("CROP_BATCH_UPDATED", request.params.id, request.authUser);
     response.json({
-      id: request.params.id,
-      updates: request.body,
-      audit: `${request.user.role} updated ${fields.join(", ")} on ${request.params.id}`
+      batch: toBatchResponse(updated),
+      audit: `${request.authUser.role} updated ${fields.join(", ")} on ${request.params.id}`
     });
   } catch (error) {
     next(error);
@@ -167,7 +198,7 @@ app.post("/api/orders/:id/assign-transporter", requireAuth, async (request, resp
     if (request.authUser.role !== "transporter") return response.status(403).json({ error: "Only transporters can accept delivery gigs." });
     if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: "Invalid order id." });
     const database = await getDatabase();
-    const result = await database.collection("orders").findOneAndUpdate({ _id: new ObjectId(request.params.id), transporterId: null }, { $set: { transporterId: request.authUser.id, transporter: request.authUser.name, status: "TRANSPORT_ASSIGNED" } }, { returnDocument: "after" });
+    const result = unwrapDocument(await database.collection("orders").findOneAndUpdate({ _id: new ObjectId(request.params.id), transporterId: null }, { $set: { transporterId: request.authUser.id, transporter: request.authUser.name, status: "TRANSPORT_ASSIGNED" } }, { returnDocument: "after" }));
     if (!result) return response.status(404).json({ error: "Order is unavailable or already assigned." });
     await recordAudit("TRANSPORTER_ASSIGNED", request.params.id, request.authUser);
     response.json({ order: { ...result, id: result._id.toString(), _id: undefined } });
@@ -201,7 +232,7 @@ app.post("/api/orders/:id/release", requireAuth, async (request, response, next)
     if (request.authUser.role !== "buyer") return response.status(403).json({ error: "Only the buyer can release escrow." });
     if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: "Invalid order id." });
     const database = await getDatabase();
-    const order = await database.collection("orders").findOneAndUpdate({ _id: new ObjectId(request.params.id), buyerId: request.authUser.id, escrowStatus: "LOCKED" }, { $set: { escrowStatus: "RELEASED", status: "COMPLETED", releasedAt: new Date() } }, { returnDocument: "after" });
+    const order = unwrapDocument(await database.collection("orders").findOneAndUpdate({ _id: new ObjectId(request.params.id), buyerId: request.authUser.id, escrowStatus: "LOCKED" }, { $set: { escrowStatus: "RELEASED", status: "COMPLETED", releasedAt: new Date() } }, { returnDocument: "after" }));
     if (!order) return response.status(404).json({ error: "Locked order was not found." });
     const payments = [
       { orderId: request.params.id, payerId: request.authUser.id, type: "FARMER_PAYOUT", amount: Math.round(order.value * 0.86), status: "RELEASED" },
@@ -253,14 +284,14 @@ app.post("/api/storage/checkin", requireAuth, async (request, response, next) =>
     if (!ObjectId.isValid(body.batchId)) return response.status(400).json({ error: "Invalid crop batch id." });
     const database = await getDatabase();
     const batchId = new ObjectId(body.batchId);
-    const updatedBatch = await database.collection("cropBatches").findOneAndUpdate({ _id: batchId }, { $set: { status: "STORED", storageId: request.authUser.id } }, { returnDocument: "after" });
+    const updatedBatch = unwrapDocument(await database.collection("cropBatches").findOneAndUpdate({ _id: batchId }, { $set: { status: "STORED", storageId: request.authUser.id, quality: body.qualityScore } }, { returnDocument: "after" }));
     if (!updatedBatch) return response.status(404).json({ error: "Crop batch was not found." });
     const ledger = { batchId: body.batchId, storageId: request.authUser.id, storagePartner: request.authUser.name, dailyRentPerKg: body.dailyRentPerKg, checkInDate: new Date(), checkOutDate: null };
     await database.collection("storageLedger").insertOne(ledger);
     const qualityCheck = { batchId: body.batchId, checkedBy: request.authUser.id, checkedByName: request.authUser.name, stage: "STORAGE_CHECKIN", photoUrl: body.photoUrl, score: body.qualityScore, createdAt: new Date() };
     await database.collection("qualityChecks").insertOne(qualityCheck);
     await recordAudit("STORAGE_CHECKIN", body.batchId, request.authUser);
-    response.status(201).json({ batch: { id: body.batchId, status: "STORED", storagePartner: request.authUser.name }, ledger, qualityCheck: { ...qualityCheck, id: qualityCheck._id?.toString() } });
+    response.status(201).json({ batch: { ...toBatchResponse(updatedBatch), storagePartner: request.authUser.name }, ledger, qualityCheck: { ...qualityCheck, id: qualityCheck._id?.toString() } });
   } catch (error) {
     next(error);
   }
@@ -280,14 +311,14 @@ app.post("/api/storage/checkout", requireAuth, async (request, response, next) =
     if (!ObjectId.isValid(body.batchId)) return response.status(400).json({ error: "Invalid crop batch id." });
     const database = await getDatabase();
     const batchId = new ObjectId(body.batchId);
-    const updatedBatch = await database.collection("cropBatches").findOneAndUpdate({ _id: batchId }, { $set: { status: "IN_TRANSIT" } }, { returnDocument: "after" });
+    const updatedBatch = unwrapDocument(await database.collection("cropBatches").findOneAndUpdate({ _id: batchId }, { $set: { status: "IN_TRANSIT", quality: body.qualityScore } }, { returnDocument: "after" }));
     if (!updatedBatch) return response.status(404).json({ error: "Crop batch was not found." });
     const checkOutDate = new Date();
-    const ledger = await database.collection("storageLedger").findOneAndUpdate({ batchId: body.batchId, checkOutDate: null }, { $set: { checkOutDate } }, { sort: { checkInDate: -1 }, returnDocument: "after" });
+    const ledger = unwrapDocument(await database.collection("storageLedger").findOneAndUpdate({ batchId: body.batchId, checkOutDate: null }, { $set: { checkOutDate } }, { sort: { checkInDate: -1 }, returnDocument: "after" }));
     const qualityCheck = { batchId: body.batchId, checkedBy: request.authUser.id, checkedByName: request.authUser.name, stage: "STORAGE_CHECKOUT", photoUrl: body.photoUrl, score: body.qualityScore, createdAt: checkOutDate };
     await database.collection("qualityChecks").insertOne(qualityCheck);
     await recordAudit("STORAGE_CHECKOUT", body.batchId, request.authUser);
-    response.status(201).json({ batch: { id: body.batchId, status: "IN_TRANSIT" }, ledger: ledger ?? { batchId: body.batchId, checkOutDate }, qualityCheck: { ...qualityCheck, id: qualityCheck._id?.toString() } });
+    response.status(201).json({ batch: toBatchResponse(updatedBatch), ledger: ledger ?? { batchId: body.batchId, checkOutDate }, qualityCheck: { ...qualityCheck, id: qualityCheck._id?.toString() } });
   } catch (error) {
     next(error);
   }

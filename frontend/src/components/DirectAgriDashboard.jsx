@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { forecast, initialBatches, kpis, parseListing, planRoute, roles, translations } from "@/lib/demo-data";
 import { apiGet, apiPost } from "@/lib/api-client";
-import { signOut } from "@/lib/auth-client";
+import { getSession, signOut } from "@/lib/auth-client";
 
 const statusLabels = {
   ON_FARM: "On farm",
@@ -46,15 +46,15 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const [availableOrder, setAvailableOrder] = useState(null);
   const [transporterMessage, setTransporterMessage] = useState("");
   const [governmentStats, setGovernmentStats] = useState(null);
-  const t = translations[locale];
+  const t = translations[locale] ?? translations.en;
+  const farmerName = getSession()?.user?.name;
   const activeBatches = batches.filter((batch) => batch.status !== "SOLD");
   const route = useMemo(() => planRoute(activeBatches), [activeBatches]);
   const selectedRole = roles.find((item) => item.id === role) ?? roles[0];
   const ActiveRoleIcon = selectedRole.icon;
 
   useEffect(() => {
-    const storedSession = window.localStorage.getItem("directagri-session");
-    const session = storedSession ? JSON.parse(storedSession) : null;
+    const session = getSession();
     if (!session) router.replace("/login");
     else if (session.user.role !== initialRole) router.replace(`/dashboard/${session.user.role}`);
   }, [initialRole, router]);
@@ -82,6 +82,11 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
       .catch(() => setGovernmentStats(null));
   }, [role]);
 
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = locale === "ur" ? "rtl" : "ltr";
+  }, [locale]);
+
   async function addListing() {
     setIsListing(true);
     setListingError("");
@@ -91,8 +96,8 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
         {
           ...batch,
           quality: batch.quality ?? 87,
-          lat: 20.05 + Math.random() / 6,
-          lng: 73.9 + Math.random() / 5
+          lat: Number.isFinite(batch.lat) ? batch.lat : 20.05 + Math.random() / 6,
+          lng: Number.isFinite(batch.lng) ? batch.lng : 73.9 + Math.random() / 5
         },
         ...current
       ]);
@@ -122,7 +127,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
     try {
       const path = action === "checkin" ? "/api/storage/checkin" : "/api/storage/checkout";
       const { batch } = await apiPost(path, { batchId, qualityScore, photoUrl: "/demo/quality.jpg" }, "storage");
-      setBatches((current) => current.map((item) => item.id === batch.id ? { ...item, status: batch.status } : item));
+      setBatches((current) => current.map((item) => item.id === batch.id ? { ...item, status: batch.status, quality: batch.quality ?? item.quality } : item));
       setStorageMessage(`${action === "checkin" ? "Checked in" : "Checked out"} batch successfully.`);
     } catch (error) {
       setStorageMessage(error.message);
@@ -132,9 +137,9 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   }
 
   async function createOrder() {
-    if (!batches.length) return;
+    if (!activeBatches.length) return;
     try {
-      const { order } = await apiPost("/api/orders/aggregate", { batchIds: [batches[0].id] }, "buyer");
+      const { order } = await apiPost("/api/orders/aggregate", { batchIds: [activeBatches[0].id] }, "buyer");
       setCurrentOrder(order);
       setOrderMessage(`Order ${order.id} created and escrow locked.`);
     } catch (error) {
@@ -242,10 +247,10 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
 
           <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
-              {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} addListing={addListing} batches={batches} isListing={isListing} listingError={listingError} />}
-              {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} />}
+              {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} addListing={addListing} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} />}
+              {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} t={t} />}
               {role === "transporter" && <TransporterPanel route={route} availableOrder={availableOrder} acceptDelivery={acceptDelivery} transporterMessage={transporterMessage} />}
-              {role === "storage" && <StoragePanel batches={activeBatches} qualityScore={qualityScore} setQualityScore={setQualityScore} updateStorage={updateStorage} isStorageAction={isStorageAction} storageMessage={storageMessage} />}
+              {role === "storage" && <StoragePanel batches={activeBatches} qualityScore={qualityScore} setQualityScore={setQualityScore} updateStorage={updateStorage} isStorageAction={isStorageAction} storageMessage={storageMessage} t={t} />}
               {role === "government" && <GovernmentPanel batches={batches} stats={governmentStats} />}
             </section>
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
@@ -278,36 +283,37 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   );
 }
 
-function FarmerPanel({ listing, setListing, addListing, batches, isListing, listingError }) {
+function FarmerPanel({ listing, setListing, addListing, batches, isListing, listingError, farmerName, t }) {
   const parsed = parseListing(listing);
+  const ownListings = batches.filter((batch) => farmerName && batch.farmer === farmerName).length;
   return (
     <>
       <PanelTitle icon={MessageSquareText} label="Farmer" title="WhatsApp-style listing parser" />
       <textarea className="focus-ring mt-4 min-h-28 w-full rounded-md border border-[var(--line)] bg-white p-4" value={listing} onChange={(event) => setListing(event.target.value)} aria-label="Crop listing message" />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <ParsedTile label="Crop" value={parsed.crop} />
-        <ParsedTile label="Quantity" value={`${parsed.quantityKg.toLocaleString()} kg`} />
+        <ParsedTile label="Quantity" value={`${(parsed.quantityKg ?? 0).toLocaleString()} kg`} />
         <ParsedTile label="Price" value={`₹${parsed.pricePerKg}/kg`} />
       </div>
       <button className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-60" onClick={addListing} disabled={isListing}>
         <Plus size={18} aria-hidden="true" />
-        {isListing ? "Saving..." : "List crop"}
+        {isListing ? "Saving..." : t.listCrop}
       </button>
       {listingError && <p className="mt-3 text-sm font-semibold text-[var(--rust)]" role="alert">{listingError}</p>}
-      <p className="mt-4 text-sm text-[var(--muted)]">{batches.filter((batch) => batch.farmer === "Demo Farmer").length} demo farmer listings added this session.</p>
+      <p className="mt-4 text-sm text-[var(--muted)]">{ownListings} of your listings are in this inventory.</p>
     </>
   );
 }
 
-function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSubmittingBid, bidMessage, createOrder, releaseEscrow, currentOrder, orderMessage }) {
+function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSubmittingBid, bidMessage, createOrder, releaseEscrow, currentOrder, orderMessage, t }) {
   const selected = batches.find((batch) => batch.id === bidBatch) ?? batches[0];
-  const averageQuality = batches.length ? Math.round(batches.reduce((sum, batch) => sum + batch.quality, 0) / batches.length) : 0;
+const averageQuality = batches.length ? Math.round(batches.reduce((sum, batch) => sum + (batch.quality ?? 0), 0) / batches.length) : 0;
   const offerPrice = Math.max(1, (selected?.pricePerKg ?? 3) - 2);
   return (
     <>
       <PanelTitle icon={Lock} label="Buyer" title="Bulk procurement and escrow" />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <ParsedTile label="Available stock" value={`${aggregate.quantity.toLocaleString()} kg`} />
+        <ParsedTile label="Available stock" value={`${(aggregate.quantity ?? 0).toLocaleString()} kg`} />
         <ParsedTile label="Escrow value" value={`₹${Math.round(aggregate.value).toLocaleString()}`} />
         <ParsedTile label="Average quality" value={`${averageQuality} / 100`} />
       </div>
@@ -321,7 +327,7 @@ function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSu
           </select>
           <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-[var(--crop)] px-4 py-3 font-semibold text-[var(--ink)] disabled:cursor-wait disabled:opacity-60" onClick={() => selected && submitBid(selected.id, offerPrice)} disabled={!selected || isSubmittingBid}>
             <ArrowRight size={18} aria-hidden="true" />
-            {isSubmittingBid ? "Submitting..." : `Offer Rs ${offerPrice}/kg`}
+            {isSubmittingBid ? "Submitting..." : `${t.buyerOffer} · ₹${offerPrice}/kg`}
           </button>
         </div>
       </div>
@@ -344,8 +350,8 @@ function TransporterPanel({ route, availableOrder, acceptDelivery, transporterMe
           <div key={batch.id} className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-white p-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--leaf)] font-bold text-white">{index + 1}</div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">{batch.village}, {batch.district}</p>
-              <p className="text-sm text-[var(--muted)]">{batch.quantityKg.toLocaleString()} kg {batch.crop} from {batch.farmer}</p>
+              <p className="font-semibold">{batch.village ?? "Nearby pickup"}, {batch.district ?? "Nashik"}</p>
+              <p className="text-sm text-[var(--muted)]">{(batch.quantityKg ?? 0).toLocaleString()} kg {batch.crop} from {batch.farmer}</p>
             </div>
             <Check className="text-[var(--leaf)]" size={19} aria-hidden="true" />
           </div>
@@ -357,7 +363,7 @@ function TransporterPanel({ route, availableOrder, acceptDelivery, transporterMe
   );
 }
 
-function StoragePanel({ batches, qualityScore, setQualityScore, updateStorage, isStorageAction, storageMessage }) {
+function StoragePanel({ batches, qualityScore, setQualityScore, updateStorage, isStorageAction, storageMessage, t }) {
   const pendingBatch = batches.find((batch) => batch.status === "ON_FARM");
   const storedBatch = batches.find((batch) => batch.status === "STORED");
   return (
@@ -371,8 +377,8 @@ function StoragePanel({ batches, qualityScore, setQualityScore, updateStorage, i
       <label className="mt-4 block text-sm font-semibold text-[var(--muted)]">Quality score: {qualityScore}</label>
       <input className="mt-2 w-full accent-[var(--leaf)]" type="range" min="50" max="100" value={qualityScore} onChange={(event) => setQualityScore(Number(event.target.value))} />
       <div className="mt-4 flex flex-wrap gap-3">
-        <button className="focus-ring rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={() => pendingBatch && updateStorage(pendingBatch.id, "checkin")} disabled={!pendingBatch || isStorageAction}>Check in next batch</button>
-        <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold disabled:opacity-60" onClick={() => storedBatch && updateStorage(storedBatch.id, "checkout")} disabled={!storedBatch || isStorageAction}>Check out stored batch</button>
+        <button className="focus-ring rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={() => pendingBatch && updateStorage(pendingBatch.id, "checkin")} disabled={!pendingBatch || isStorageAction}>{t.checkIn}</button>
+        <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold disabled:opacity-60" onClick={() => storedBatch && updateStorage(storedBatch.id, "checkout")} disabled={!storedBatch || isStorageAction}>{t.checkOut}</button>
       </div>
       {storageMessage && <p className="mt-3 text-sm font-semibold text-[var(--leaf)]" role="status">{storageMessage}</p>}
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -430,10 +436,10 @@ function Inventory({ batches, t }) {
                 <td className="py-3 pr-4 font-semibold">{batch.id}</td>
                 <td className="py-3 pr-4">{batch.crop}</td>
                 <td className="py-3 pr-4">{batch.farmer}</td>
-                <td className="py-3 pr-4">{batch.quantityKg.toLocaleString()} kg</td>
+                <td className="py-3 pr-4">{(batch.quantityKg ?? 0).toLocaleString()} kg</td>
                 <td className="py-3 pr-4">₹{batch.pricePerKg}/kg</td>
-                <td className="py-3 pr-4"><span className="inline-flex items-center gap-1"><Star size={15} className="fill-[var(--crop)] text-[var(--crop)]" aria-hidden="true" />{batch.quality}</span></td>
-                <td className="py-3 pr-4"><span className="rounded-md bg-[var(--panel-strong)] px-2 py-1 font-semibold">{statusLabels[batch.status]}</span></td>
+                <td className="py-3 pr-4"><span className="inline-flex items-center gap-1"><Star size={15} className="fill-[var(--crop)] text-[var(--crop)]" aria-hidden="true" />{batch.quality ?? "—"}</span></td>
+                <td className="py-3 pr-4"><span className="rounded-md bg-[var(--panel-strong)] px-2 py-1 font-semibold">{statusLabels[batch.status] ?? batch.status}</span></td>
               </tr>
             ))}
           </tbody>

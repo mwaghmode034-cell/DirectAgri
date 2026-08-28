@@ -1,6 +1,10 @@
 export function planRoute(batches) {
   const depot = { lat: 19.99, lng: 73.78 };
-  const remaining = [...batches];
+  const remaining = batches.map((batch, index) => ({
+    ...batch,
+    lat: Number.isFinite(batch.lat) ? batch.lat : depot.lat + index * 0.04,
+    lng: Number.isFinite(batch.lng) ? batch.lng : depot.lng + index * 0.04
+  }));
   const route = [];
   let current = depot;
 
@@ -16,5 +20,5 @@ export function planRoute(batches) {
 }
 
 function distance(a, b) {
-  return Math.hypot(a.lat - b.lat, a.lng - b.lng);
+  return Math.hypot((a.lat ?? 0) - (b.lat ?? 0), (a.lng ?? 0) - (b.lng ?? 0));
 }

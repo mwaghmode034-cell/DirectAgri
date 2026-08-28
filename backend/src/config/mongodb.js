@@ -1,32 +1,36 @@
+import bcrypt from "bcryptjs";
 import { MongoClient } from "mongodb";
 import { demoBatches, forecast } from "../data/demo-data.js";
+import { MemoryDatabase } from "../lib/memory-db.js";
 
 let client;
 let database;
+let usingMemory = false;
 
 export async function getDatabase() {
+    if (database) return database;
+
     const uri = process.env.MONGODB_URI;
-    if (!uri) throw new Error("MONGODB_URI is not configured");
-    if (!database) {
+    if (uri) {
         try {
             client = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 });
             await client.connect();
             database = client.db(process.env.MONGODB_DB ?? "directagri");
             await ensureCollections(database);
             await seedDemoCollections(database);
+            return database;
         } catch (error) {
             await client?.close().catch(() => { });
             client = undefined;
-            database = undefined;
-            const errorText = `${error.codeName ?? ""} ${error.message ?? ""}`.toLowerCase();
-            if (error.code === 18 || error.code === 8000 || errorText.includes("bad auth") || errorText.includes("authentication failed") || errorText.includes("authenticationfailure")) {
-                const authError = new Error("MongoDB authentication failed. Check the Atlas database username, password, and URL encoding.");
-                authError.status = 503;
-                throw authError;
-            }
-            throw error;
+            console.warn(`MongoDB unavailable (${error.message}). Using in-memory demo store.`);
         }
+    } else {
+        console.warn("MONGODB_URI is not configured. Using in-memory demo store.");
     }
+
+    usingMemory = true;
+    database = new MemoryDatabase();
+    await seedDemoCollections(database);
     return database;
 }
 
@@ -65,10 +69,35 @@ async function seedDemoCollections(database) {
     if (await priceBenchmarks.countDocuments() === 0) {
         await priceBenchmarks.insertMany(forecast.map((item) => ({ cropType: item.crop, mandiPrice: item.mandi, platformAvg: item.platform, demand: item.demand, recordedAt: new Date() })));
     }
+
+    await ensureDemoUsers(database);
+}
+
+async function ensureDemoUsers(database) {
+    const users = database.collection("users");
+    const passwordHash = await bcrypt.hash("demo1234", 10);
+    const demoAccounts = [
+        ["Asha Pawar", "farmer@directagri.dev", "farmer", "Pimpalgaon, Nashik"],
+        ["FreshCart Procurement", "buyer@directagri.dev", "buyer", "Pune, Pune"],
+        ["Ganesh Logistics", "transporter@directagri.dev", "transporter", "Nashik, Nashik"],
+        ["Niphad Cold Storage", "storage@directagri.dev", "storage", "Niphad, Nashik"],
+        ["Maharashtra Agriculture Desk", "government@directagri.dev", "government", "Mumbai, Mumbai"]
+    ];
+    for (const [name, email, role, location] of demoAccounts) {
+        const existing = await users.findOne({ email });
+        if (!existing) {
+            await users.insertOne({ name, email, passwordHash, role, location, kycVerified: true, createdAt: new Date() });
+        }
+    }
+}
+
+export function isMemoryStore() {
+    return usingMemory;
 }
 
 export async function closeDatabase() {
     await client?.close();
     client = undefined;
     database = undefined;
+    usingMemory = false;
 }

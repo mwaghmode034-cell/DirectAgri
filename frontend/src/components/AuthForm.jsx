@@ -6,6 +6,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn, signUp } from "@/lib/auth-client";
 
+const demoAccounts = [
+    ["Farmer", "farmer@directagri.dev"],
+    ["Buyer", "buyer@directagri.dev"],
+    ["Transporter", "transporter@directagri.dev"],
+    ["Storage", "storage@directagri.dev"],
+    ["Government", "government@directagri.dev"]
+];
+
 export default function AuthForm({ mode = "login" }) {
     const isSignUp = mode === "signup";
     const router = useRouter();
@@ -28,6 +36,11 @@ export default function AuthForm({ mode = "login" }) {
             setError(submitError.message);
             setIsSubmitting(false);
         }
+    }
+
+    function fillDemo(email) {
+        setForm((current) => ({ ...current, email, password: "demo1234" }));
+        setError("");
     }
 
     return (
@@ -55,11 +68,24 @@ export default function AuthForm({ mode = "login" }) {
                     <form className="space-y-4" onSubmit={submit}>
                         {isSignUp && <Field icon={UserRound} label="Full name" name="name" value={form.name} onChange={updateField} placeholder="Asha Pawar" />}
                         <Field icon={Mail} label="Email" name="email" type="email" value={form.email} onChange={updateField} placeholder="you@example.com" />
-                        <Field icon={LockKeyhole} label="Password" name="password" type="password" value={form.password} onChange={updateField} placeholder="At least 6 characters" />
+                        <Field icon={LockKeyhole} label="Password" name="password" type="password" value={form.password} onChange={updateField} placeholder="At least 6 characters" minLength={6} />
+                        <div className="flex justify-end">
+                            <Link href="/forgot-password" className="text-sm font-semibold text-[var(--leaf-dark)]">Forgot password?</Link>
+                        </div>
                         {isSignUp && <label className="block text-sm font-semibold">Your role<select name="role" value={form.role} onChange={updateField} className="focus-ring mt-2 min-h-12 w-full rounded-lg border border-[var(--line)] bg-white px-3"><option value="farmer">Farmer</option><option value="buyer">Buyer</option><option value="transporter">Transporter</option><option value="storage">Storage partner</option><option value="government">Government</option></select></label>}
                         {error && <p className="rounded-lg bg-[#fbe9e3] px-3 py-2 text-sm font-semibold text-[var(--rust)]" role="alert">{error}</p>}
                         <button className="focus-ring flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[var(--leaf)] px-4 font-semibold text-white disabled:opacity-60" disabled={isSubmitting}>{isSubmitting ? "Opening workspace..." : isSignUp ? "Create account" : "Log in"}<ArrowRight size={18} /></button>
                     </form>
+                    {!isSignUp && (
+                        <div className="mt-6 rounded-xl border border-[var(--line)] bg-white p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Demo login · password demo1234</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {demoAccounts.map(([label, email]) => (
+                                    <button key={email} type="button" className="rounded-md border border-[var(--line)] px-2.5 py-1.5 text-xs font-semibold" onClick={() => fillDemo(email)}>{label}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </section>
         </main>

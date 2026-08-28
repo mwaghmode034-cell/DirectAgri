@@ -10,10 +10,24 @@ export async function signUp({ name, email, password, role }) {
     return saveAuth(await apiPost("/api/auth/signup", { name, email, password, role }));
 }
 
+export async function requestPasswordReset(email) {
+    return apiPost("/api/auth/forgot-password", { email });
+}
+
+export async function resetPassword({ email, code, password }) {
+    return apiPost("/api/auth/reset-password", { email, code, password });
+}
+
 export function getSession() {
     if (typeof window === "undefined") return null;
     const storedSession = window.localStorage.getItem(sessionKey);
-    return storedSession ? JSON.parse(storedSession) : null;
+    if (!storedSession) return null;
+    try {
+        return JSON.parse(storedSession);
+    } catch {
+        window.localStorage.removeItem(sessionKey);
+        return null;
+    }
 }
 
 export function signOut() {

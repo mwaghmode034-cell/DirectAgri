@@ -1,13 +1,13 @@
 const cropBatchUpdatePermissions = {
-  FARMER: ["cropType", "quantityKg", "pricePerKg", "status", "storageId"],
-  BUYER: [],
-  TRANSPORTER: ["status"],
-  STORAGE: ["status", "storageId"],
-  GOVERNMENT: []
+  farmer: ["cropType", "crop", "quantityKg", "pricePerKg", "status", "storageId"],
+  buyer: [],
+  transporter: ["status"],
+  storage: ["status", "storageId", "quality"],
+  government: []
 };
 
 export function assertCanUpdate(role, fields) {
-  const allowed = cropBatchUpdatePermissions[role] ?? [];
+  const allowed = cropBatchUpdatePermissions[String(role ?? "").toLowerCase()] ?? [];
   const blocked = fields.filter((field) => !allowed.includes(field));
 
   if (blocked.length) {
