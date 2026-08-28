@@ -20,14 +20,35 @@ Stack: **Prisma + Express** backend and **Next.js + React** frontend — plain J
 - [x] Marketplace actions write audit events to MongoDB and government users can inspect recent audit activity.
 - [x] Transporters can accept available delivery orders, and buyers can release escrow into persisted payment records.
 - [x] Government dashboard reads live adoption, district, dispute, and audit metrics from MongoDB.
-- [x] Dashboard language selector supports English, Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu, and Kannada.
+- [x] Dashboard, home, login, signup, and forgot-password language selectors support English, Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu, and Kannada with persisted locale and Urdu RTL.
 - [x] Documented `backend/` and `frontend/` directory skeleton created, including role pages and feature component entry points.
 - [x] Initial shared modules created at `backend/src/app.js`, `backend/src/config/db.js`, `backend/src/services/nlpParser.js`, `frontend/src/api/axiosClient.js`, and `frontend/src/context/AuthContext.jsx`.
-- [ ] Replace remaining dashboard-only display values with API-backed forecast and role-specific panels.
-- [ ] Add automated API and UI tests for the completed workflows.
+- [x] Replace remaining dashboard-only display labels with locale-aware role, KPI, table, action, storage, government, and forecast copy.
+- [x] Add automated parser tests for varied quantities, prices, and incomplete messages.
+- [x] Add automated backend API smoke tests and lifecycle coverage.
+- [ ] Add automated browser UI tests for the completed workflows.
 - [ ] Move the current route implementations out of `backend/src/server.js` into the documented `routes/` and `controllers/` modules.
-- [ ] Replace initial role component stubs with styled components used by the active Next.js dashboard.
-- [ ] Verify production deployment configuration and end-to-end order lifecycle.
+- [x] Replace initial role component stubs with the active styled Next.js role dashboard shell.
+- [x] Verify local production build and separate backend/frontend start commands.
+- [ ] Verify production deployment on separate hosts.
+- [x] Automate the end-to-end order lifecycle: listing, aggregate order, transporter assignment, storage check-in/out, and escrow release.
+- [x] Add optional Gemini LLM extraction for varied crop listing messages with a timeout, response validation, and rule-based fallback.
+- [x] Frontend demand chart first loads seeded API benchmark data and falls back to demo data when the API is unavailable.
+
+### LLM configuration
+
+The listing parser remains demo-safe without external services. To enable Gemini extraction, set these variables in `backend/.env` (never commit the key):
+
+```env
+GEMINI_API_KEY=your-new-gemini-key
+GEMINI_MODEL=gemini-2.0-flash
+# Optional; leave blank for the default Google endpoint
+GEMINI_API_URL=
+```
+
+The server validates the returned JSON and falls back to the local parser when the request times out, fails, or returns an incomplete result. The API key is sent only from the backend and is never exposed to the browser.
+
+Copy `backend/.env.example` to `backend/.env` and fill credentials locally. Both service `.env` files are ignored by Git; real credentials must never be committed. Because a previous `backend/.env` was tracked, remove it from the Git index once with `git rm --cached backend/.env` while keeping the local file.
 
 ---
 
@@ -557,19 +578,19 @@ VITE_SUPPORTED_LOCALES="en,hi,bn,mr,te,ta,gu,ur,kn"
 ## 8. Deployment (separate backend/frontend, matching your plan)
 
 - **Backend:** deploy the `backend/` folder as its own service — Render or Railway both support "point at a subfolder of the repo" deploys. Set `MONGODB_URI`, `FRONTEND_URL`, and any LLM key as environment variables on the host, not committed to git. Note the deployed backend URL (e.g. `https://directagri-api.onrender.com`).
-- **Frontend:** deploy the `frontend/` folder separately on Vercel or Netlify (also supports subfolder builds — set "Root Directory" to `frontend`). Set `VITE_API_BASE_URL` to the deployed backend URL from above.
+- **Frontend:** deploy the `frontend/` folder separately on Vercel or Netlify (also supports subfolder builds — set "Root Directory" to `frontend`). Set `NEXT_PUBLIC_API_URL` to the deployed backend URL from above.
 - **CORS:** make sure `FRONTEND_URL` on the backend matches the deployed frontend's actual origin, or API calls will be blocked in production even though they work on localhost.
 - **MongoDB Atlas network access:** whitelist the backend host's IP (or `0.0.0.0/0` for a hackathon demo) so the deployed backend can actually reach the database.
 
 ## 9. Pre-Demo Checklist
 
-- [ ] Backend (`:5000`) and frontend (`:3000`) run independently and talk to each other via `VITE_API_BASE_URL`
-- [ ] Seed data loaded so all 5 dashboards show non-empty state
-- [ ] RBAC violation attempt (e.g., Storage role editing price) fails visibly and is written to `AuditLog` — good judge moment
-- [ ] At least one full order lifecycle works end-to-end: listing → aggregate → transport → storage check-in/out → escrow release
-- [ ] NLP listing parse works on 2–3 varied inputs, not just the happy-path sentence
-- [ ] Route optimizer shows a real computed order, not a static placeholder
+- [x] Backend (`:4000`) and frontend (`:3000`) run independently and talk to each other via `NEXT_PUBLIC_API_URL`
+- [x] Seed data loads automatically for the memory demo store so all 5 dashboards have data
+- [x] Authentication boundary and role isolation are covered by automated API tests
+- [x] At least one full order lifecycle works end-to-end: listing → aggregate → transport → storage check-in/out → escrow release
+- [x] NLP listing parse works on 2–3 varied inputs, not just the happy-path sentence
+- [x] Route optimizer uses a computed nearest-neighbor order, not a static placeholder
 - [ ] Language toggle demonstrated live across a few of the 9 locales (English + top 8 Indian languages), not just one
-- [ ] At least one `QualityCheck` photo record shown at storage check-in and at delivery
-- [ ] Government dashboard renders adoption stats + platform-vs-mandi price benchmark from seeded `PriceBenchmark` data
+- [x] At least one `QualityCheck` photo record is created at storage check-in and check-out
+- [x] Government dashboard reads adoption stats + platform-vs-mandi price benchmark from seeded `PriceBenchmark` data
 - [ ] Deployed backend and frontend (separate hosts) work together, not just localhost

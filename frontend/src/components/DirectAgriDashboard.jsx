@@ -15,21 +15,15 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { forecast, initialBatches, kpis, parseListing, planRoute, roles, translations } from "@/lib/demo-data";
+import { forecast as demoForecast, initialBatches, kpis, parseListing, planRoute, roles, translations } from "@/lib/demo-data";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { getSession, signOut } from "@/lib/auth-client";
-
-const statusLabels = {
-  ON_FARM: "On farm",
-  IN_TRANSIT: "In transit",
-  STORED: "Stored",
-  SOLD: "Sold"
-};
+import { applyLocale, dashboardTranslations, getLocale, languageOptions, setLocale } from "@/lib/i18n";
 
 export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const router = useRouter();
   const role = initialRole;
-  const [locale, setLocale] = useState("en");
+  const [locale, setCurrentLocale] = useState(getLocale);
   const [batches, setBatches] = useState(initialBatches);
   const [listing, setListing] = useState("2.5 tons onion from Nashik at Rs 23 per kg, ready tomorrow");
   const [bidBatch, setBidBatch] = useState("B-1402");
@@ -46,7 +40,8 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const [availableOrder, setAvailableOrder] = useState(null);
   const [transporterMessage, setTransporterMessage] = useState("");
   const [governmentStats, setGovernmentStats] = useState(null);
-  const t = translations[locale] ?? translations.en;
+  const [forecastData, setForecastData] = useState(demoForecast);
+  const t = { ...(translations[locale] ?? translations.en), ...(dashboardTranslations[locale] ?? dashboardTranslations.en) };
   const farmerName = getSession()?.user?.name;
   const activeBatches = batches.filter((batch) => batch.status !== "SOLD");
   const route = useMemo(() => planRoute(activeBatches), [activeBatches]);
@@ -83,9 +78,20 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   }, [role]);
 
   useEffect(() => {
-    document.documentElement.lang = locale;
-    document.documentElement.dir = locale === "ur" ? "rtl" : "ltr";
+    apiGet("/api/forecast").then(({ forecast: savedForecast }) => {
+      if (savedForecast?.length) setForecastData(savedForecast);
+    }).catch(() => setForecastData(demoForecast));
+  }, []);
+
+  useEffect(() => {
+    applyLocale(locale);
+    setLocale(locale);
   }, [locale]);
+
+  function changeLocale(nextLocale) {
+    setCurrentLocale(nextLocale);
+    setLocale(nextLocale);
+  }
 
   async function addListing() {
     setIsListing(true);
@@ -194,27 +200,19 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
           <div className="mt-6 rounded-md bg-[var(--leaf)] px-3 py-3 text-white">
             <div className="flex items-center gap-3">
               <ActiveRoleIcon size={18} aria-hidden="true" />
-              <span className="font-semibold">{selectedRole.label} dashboard</span>
+              <span className="font-semibold">{t[selectedRole.id]} {t.dashboard}</span>
             </div>
-            <p className="mt-2 text-xs text-white/80">Your workspace is limited to this role.</p>
+            <p className="mt-2 text-xs text-white/80">{t.limited}</p>
           </div>
           <label className="mt-6 flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm">
             <Languages size={17} aria-hidden="true" />
-            <select className="focus-ring w-full bg-transparent font-semibold" value={locale} onChange={(event) => setLocale(event.target.value)} aria-label="Language">
-              <option value="en">English</option>
-              <option value="hi">Hindi</option>
-              <option value="bn">Bengali</option>
-              <option value="mr">Marathi</option>
-              <option value="te">Telugu</option>
-              <option value="ta">Tamil</option>
-              <option value="gu">Gujarati</option>
-              <option value="ur">Urdu</option>
-              <option value="kn">Kannada</option>
+            <select className="focus-ring w-full bg-transparent font-semibold" value={locale} onChange={(event) => changeLocale(event.target.value)} aria-label="Language">
+              {languageOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
             </select>
           </label>
           <div className="mt-6 rounded-lg bg-[var(--sky)] p-4">
-            <p className="text-sm font-semibold text-[var(--leaf-dark)]">RBAC proof point</p>
-            <p className="mt-2 text-sm text-[var(--muted)]">Storage can update location and quality records, while crop pricing remains farmer-owned.</p>
+            <p className="text-sm font-semibold text-[var(--leaf-dark)]">{t.rbac}</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">{t.rbacText}</p>
           </div>
           <button className="focus-ring mt-4 w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold" onClick={() => { signOut(); router.replace("/"); }}>{t.logout}</button>
         </aside>
@@ -225,19 +223,20 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--leaf)]">
                   <ActiveRoleIcon size={17} aria-hidden="true" />
-                  {selectedRole.label} console
+                  {t[selectedRole.id]} {t.console}
                 </div>
                 <h2 className="mt-2 text-3xl font-bold leading-tight sm:text-4xl">{t.headline}</h2>
                 <p className="mt-3 max-w-2xl text-base text-[var(--muted)]">{t.subhead}</p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:min-w-[26rem]">
-                {kpis.map((kpi) => {
+                {kpis.map((kpi, index) => {
                   const Icon = kpi.icon;
+                  const labels = [t.margin, t.participants, t.active, t.uplift];
                   return (
                     <div key={kpi.label} className="rounded-lg border border-[var(--line)] bg-white p-3">
                       <Icon size={18} className="text-[var(--rust)]" aria-hidden="true" />
                       <p className="mt-2 text-2xl font-bold">{kpi.value}</p>
-                      <p className="text-xs font-semibold text-[var(--muted)]">{kpi.label}</p>
+                      <p className="text-xs font-semibold text-[var(--muted)]">{labels[index] ?? kpi.label}</p>
                     </div>
                   );
                 })}
@@ -249,27 +248,27 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
               {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} addListing={addListing} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} />}
               {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} t={t} />}
-              {role === "transporter" && <TransporterPanel route={route} availableOrder={availableOrder} acceptDelivery={acceptDelivery} transporterMessage={transporterMessage} />}
+              {role === "transporter" && <TransporterPanel route={route} availableOrder={availableOrder} acceptDelivery={acceptDelivery} transporterMessage={transporterMessage} t={t} />}
               {role === "storage" && <StoragePanel batches={activeBatches} qualityScore={qualityScore} setQualityScore={setQualityScore} updateStorage={updateStorage} isStorageAction={isStorageAction} storageMessage={storageMessage} t={t} />}
-              {role === "government" && <GovernmentPanel batches={batches} stats={governmentStats} />}
+              {role === "government" && <GovernmentPanel batches={batches} stats={governmentStats} t={t} />}
             </section>
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-[var(--leaf)]">Demand forecast</p>
+                  <p className="text-sm font-semibold text-[var(--leaf)]">{t.demand}</p>
                   <h3 className="text-xl font-bold">{t.forecast}</h3>
                 </div>
-                <span className="rounded-md bg-[var(--panel-strong)] px-3 py-1 text-sm font-semibold">Mocked e-NAM</span>
+                <span className="rounded-md bg-[var(--panel-strong)] px-3 py-1 text-sm font-semibold">{t.mocked}</span>
               </div>
               <div className="mt-5 h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={forecast}>
+                  <BarChart data={forecastData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ded3bd" />
                     <XAxis dataKey="crop" tickLine={false} axisLine={false} fontSize={12} />
                     <YAxis tickLine={false} axisLine={false} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="mandi" name="Mandi price" fill="#aa5739" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="platform" name="Platform avg" fill="#2f6f4e" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="mandi" name={t.mandi} fill="#aa5739" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="platform" name={t.platform} fill="#2f6f4e" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -288,37 +287,37 @@ function FarmerPanel({ listing, setListing, addListing, batches, isListing, list
   const ownListings = batches.filter((batch) => farmerName && batch.farmer === farmerName).length;
   return (
     <>
-      <PanelTitle icon={MessageSquareText} label="Farmer" title="WhatsApp-style listing parser" />
+      <PanelTitle icon={MessageSquareText} label={t.farmerPanel} title={t.listing} />
       <textarea className="focus-ring mt-4 min-h-28 w-full rounded-md border border-[var(--line)] bg-white p-4" value={listing} onChange={(event) => setListing(event.target.value)} aria-label="Crop listing message" />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <ParsedTile label="Crop" value={parsed.crop} />
-        <ParsedTile label="Quantity" value={`${(parsed.quantityKg ?? 0).toLocaleString()} kg`} />
-        <ParsedTile label="Price" value={`₹${parsed.pricePerKg}/kg`} />
+        <ParsedTile label={t.crop} value={parsed.crop} />
+        <ParsedTile label={t.quantity} value={`${(parsed.quantityKg ?? 0).toLocaleString()} ${t.kg}`} />
+        <ParsedTile label={t.price} value={`₹${parsed.pricePerKg}/${t.kg}`} />
       </div>
       <button className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-60" onClick={addListing} disabled={isListing}>
         <Plus size={18} aria-hidden="true" />
-        {isListing ? "Saving..." : t.listCrop}
+        {isListing ? t.saving : t.listCrop}
       </button>
       {listingError && <p className="mt-3 text-sm font-semibold text-[var(--rust)]" role="alert">{listingError}</p>}
-      <p className="mt-4 text-sm text-[var(--muted)]">{ownListings} of your listings are in this inventory.</p>
+      <p className="mt-4 text-sm text-[var(--muted)]">{ownListings} {t.ownListings}</p>
     </>
   );
 }
 
 function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSubmittingBid, bidMessage, createOrder, releaseEscrow, currentOrder, orderMessage, t }) {
   const selected = batches.find((batch) => batch.id === bidBatch) ?? batches[0];
-const averageQuality = batches.length ? Math.round(batches.reduce((sum, batch) => sum + (batch.quality ?? 0), 0) / batches.length) : 0;
+  const averageQuality = batches.length ? Math.round(batches.reduce((sum, batch) => sum + (batch.quality ?? 0), 0) / batches.length) : 0;
   const offerPrice = Math.max(1, (selected?.pricePerKg ?? 3) - 2);
   return (
     <>
-      <PanelTitle icon={Lock} label="Buyer" title="Bulk procurement and escrow" />
+      <PanelTitle icon={Lock} label={t.buyer} title={`${t.available} / ${t.escrow}`} />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <ParsedTile label="Available stock" value={`${(aggregate.quantity ?? 0).toLocaleString()} kg`} />
-        <ParsedTile label="Escrow value" value={`₹${Math.round(aggregate.value).toLocaleString()}`} />
-        <ParsedTile label="Average quality" value={`${averageQuality} / 100`} />
+        <ParsedTile label={t.available} value={`${(aggregate.quantity ?? 0).toLocaleString()} ${t.kg}`} />
+        <ParsedTile label={t.escrow} value={`₹${Math.round(aggregate.value).toLocaleString()}`} />
+        <ParsedTile label={t.quality} value={`${averageQuality} / 100`} />
       </div>
       <div className="mt-4 rounded-lg border border-[var(--line)] bg-white p-4">
-        <label className="text-sm font-semibold text-[var(--muted)]" htmlFor="bid-batch">Negotiate batch</label>
+        <label className="text-sm font-semibold text-[var(--muted)]" htmlFor="bid-batch">{t.negotiate}</label>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
           <select id="bid-batch" className="focus-ring min-h-11 flex-1 rounded-md border border-[var(--line)] px-3" value={bidBatch} onChange={(event) => setBidBatch(event.target.value)}>
             {batches.map((batch) => (
@@ -327,37 +326,37 @@ const averageQuality = batches.length ? Math.round(batches.reduce((sum, batch) =
           </select>
           <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-[var(--crop)] px-4 py-3 font-semibold text-[var(--ink)] disabled:cursor-wait disabled:opacity-60" onClick={() => selected && submitBid(selected.id, offerPrice)} disabled={!selected || isSubmittingBid}>
             <ArrowRight size={18} aria-hidden="true" />
-            {isSubmittingBid ? "Submitting..." : `${t.buyerOffer} · ₹${offerPrice}/kg`}
+            {isSubmittingBid ? t.submit : `${t.buyerOffer} · ₹${offerPrice}/${t.kg}`}
           </button>
         </div>
       </div>
       {bidMessage && <p className="mt-3 text-sm font-semibold text-[var(--leaf)]" role="status">{bidMessage}</p>}
       <div className="mt-4 flex flex-wrap gap-3">
-        <button className="focus-ring rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={createOrder} disabled={!batches.length}>Create bulk order</button>
-        <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold disabled:opacity-60" onClick={releaseEscrow} disabled={!currentOrder || currentOrder.escrowStatus !== "LOCKED"}>Release escrow</button>
+        <button className="focus-ring rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={createOrder} disabled={!batches.length}>{t.bulkOrder}</button>
+        <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold disabled:opacity-60" onClick={releaseEscrow} disabled={!currentOrder || currentOrder.escrowStatus !== "LOCKED"}>{t.release}</button>
       </div>
       {orderMessage && <p className="mt-3 text-sm font-semibold text-[var(--leaf)]" role="status">{orderMessage}</p>}
     </>
   );
 }
 
-function TransporterPanel({ route, availableOrder, acceptDelivery, transporterMessage }) {
+function TransporterPanel({ route, availableOrder, acceptDelivery, transporterMessage, t }) {
   return (
     <>
-      <PanelTitle icon={MapPinned} label="Transporter" title="Nearest-neighbor gig route" />
+      <PanelTitle icon={MapPinned} label={t.transporter} title={t.route} />
       <div className="mt-4 space-y-3">
         {route.map((batch, index) => (
           <div key={batch.id} className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-white p-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[var(--leaf)] font-bold text-white">{index + 1}</div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">{batch.village ?? "Nearby pickup"}, {batch.district ?? "Nashik"}</p>
-              <p className="text-sm text-[var(--muted)]">{(batch.quantityKg ?? 0).toLocaleString()} kg {batch.crop} from {batch.farmer}</p>
+              <p className="font-semibold">{batch.village ?? t.nearby}, {batch.district ?? "Nashik"}</p>
+              <p className="text-sm text-[var(--muted)]">{(batch.quantityKg ?? 0).toLocaleString()} {t.kg} {batch.crop} {t.from} {batch.farmer}</p>
             </div>
             <Check className="text-[var(--leaf)]" size={19} aria-hidden="true" />
           </div>
         ))}
       </div>
-      <button className="focus-ring mt-4 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={acceptDelivery} disabled={!availableOrder}>Accept available delivery</button>
+      <button className="focus-ring mt-4 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={acceptDelivery} disabled={!availableOrder}>{t.accept}</button>
       {transporterMessage && <p className="mt-3 text-sm font-semibold text-[var(--leaf)]" role="status">{transporterMessage}</p>}
     </>
   );
@@ -368,13 +367,13 @@ function StoragePanel({ batches, qualityScore, setQualityScore, updateStorage, i
   const storedBatch = batches.find((batch) => batch.status === "STORED");
   return (
     <>
-      <PanelTitle icon={Upload} label="Storage" title="Quality record at check-in" />
+      <PanelTitle icon={Upload} label={t.storage} title={t.storagePanel} />
       <div className="mt-4 rounded-lg border border-dashed border-[var(--leaf)] bg-white p-5 text-center">
         <Upload className="mx-auto text-[var(--leaf)]" size={28} aria-hidden="true" />
-        <p className="mt-2 font-semibold">Photo upload stub</p>
-        <p className="text-sm text-[var(--muted)]">Demo mode records a quality score without external vision calls.</p>
+        <p className="mt-2 font-semibold">{t.photo}</p>
+        <p className="text-sm text-[var(--muted)]">{t.photoText}</p>
       </div>
-      <label className="mt-4 block text-sm font-semibold text-[var(--muted)]">Quality score: {qualityScore}</label>
+      <label className="mt-4 block text-sm font-semibold text-[var(--muted)]">{t.score}: {qualityScore}</label>
       <input className="mt-2 w-full accent-[var(--leaf)]" type="range" min="50" max="100" value={qualityScore} onChange={(event) => setQualityScore(Number(event.target.value))} />
       <div className="mt-4 flex flex-wrap gap-3">
         <button className="focus-ring rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={() => pendingBatch && updateStorage(pendingBatch.id, "checkin")} disabled={!pendingBatch || isStorageAction}>{t.checkIn}</button>
@@ -382,26 +381,26 @@ function StoragePanel({ batches, qualityScore, setQualityScore, updateStorage, i
       </div>
       {storageMessage && <p className="mt-3 text-sm font-semibold text-[var(--leaf)]" role="status">{storageMessage}</p>}
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <ParsedTile label="Pending check-ins" value={String(batches.filter((batch) => batch.status === "ON_FARM").length)} />
-        <ParsedTile label="Rent ledger" value="₹0.42/kg/day" />
+        <ParsedTile label={t.pending} value={String(batches.filter((batch) => batch.status === "ON_FARM").length)} />
+        <ParsedTile label={t.rent} value={`₹0.42/${t.kg}/day`} />
       </div>
     </>
   );
 }
 
-function GovernmentPanel({ batches, stats }) {
+function GovernmentPanel({ batches, stats, t }) {
   return (
     <>
-      <PanelTitle icon={ShieldCheck} label="Government" title="Read-only impact dashboard" />
+      <PanelTitle icon={ShieldCheck} label={t.government} title={t.governmentPanel} />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <ParsedTile label="Districts covered" value={String(stats?.districtsCovered ?? 0)} />
-        <ParsedTile label="Batches audited" value={String(stats?.activeBatches ?? batches.length)} />
-        <ParsedTile label="Open disputes" value={String(stats?.openDisputes ?? 0)} />
-        <ParsedTile label="Audit events" value={String(stats?.auditEvents ?? 0)} />
+        <ParsedTile label={t.districts} value={String(stats?.districtsCovered ?? 0)} />
+        <ParsedTile label={t.audited} value={String(stats?.activeBatches ?? batches.length)} />
+        <ParsedTile label={t.disputes} value={String(stats?.openDisputes ?? 0)} />
+        <ParsedTile label={t.audits} value={String(stats?.auditEvents ?? 0)} />
       </div>
       <div className="mt-4 rounded-lg border border-[var(--line)] bg-white p-4">
-        <p className="text-sm font-semibold text-[var(--leaf)]">Ministry view</p>
-        <p className="mt-1 text-sm text-[var(--muted)]">This dashboard is intentionally read-only: policy teams can inspect adoption, price uplift, quality records, and audit events without affecting live trade.</p>
+        <p className="text-sm font-semibold text-[var(--leaf)]">{t.ministry}</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">{t.ministryText}</p>
       </div>
     </>
   );
@@ -413,7 +412,7 @@ function Inventory({ batches, t }) {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-[var(--leaf)]">{t.inventory}</p>
-          <h3 className="text-xl font-bold">Farmer-owned crop batches</h3>
+          <h3 className="text-xl font-bold">{t.inventoryTitle}</h3>
         </div>
         <span className="text-sm font-semibold text-[var(--muted)]">{batches.length} {t.records}</span>
       </div>
@@ -421,13 +420,7 @@ function Inventory({ batches, t }) {
         <table className="w-full min-w-[760px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--line)] text-[var(--muted)]">
-              <th className="py-3 pr-4">Batch</th>
-              <th className="py-3 pr-4">Crop</th>
-              <th className="py-3 pr-4">Owner</th>
-              <th className="py-3 pr-4">Quantity</th>
-              <th className="py-3 pr-4">Price</th>
-              <th className="py-3 pr-4">Quality</th>
-              <th className="py-3 pr-4">Status</th>
+              <th className="py-3 pr-4">{t.batch}</th><th className="py-3 pr-4">{t.crop}</th><th className="py-3 pr-4">{t.owner}</th><th className="py-3 pr-4">{t.quantity}</th><th className="py-3 pr-4">{t.price}</th><th className="py-3 pr-4">{t.quality}</th><th className="py-3 pr-4">{t.status}</th>
             </tr>
           </thead>
           <tbody>
@@ -436,10 +429,10 @@ function Inventory({ batches, t }) {
                 <td className="py-3 pr-4 font-semibold">{batch.id}</td>
                 <td className="py-3 pr-4">{batch.crop}</td>
                 <td className="py-3 pr-4">{batch.farmer}</td>
-                <td className="py-3 pr-4">{(batch.quantityKg ?? 0).toLocaleString()} kg</td>
-                <td className="py-3 pr-4">₹{batch.pricePerKg}/kg</td>
+                <td className="py-3 pr-4">{(batch.quantityKg ?? 0).toLocaleString()} {t.kg}</td>
+                <td className="py-3 pr-4">₹{batch.pricePerKg}/{t.kg}</td>
                 <td className="py-3 pr-4"><span className="inline-flex items-center gap-1"><Star size={15} className="fill-[var(--crop)] text-[var(--crop)]" aria-hidden="true" />{batch.quality ?? "—"}</span></td>
-                <td className="py-3 pr-4"><span className="rounded-md bg-[var(--panel-strong)] px-2 py-1 font-semibold">{statusLabels[batch.status] ?? batch.status}</span></td>
+                <td className="py-3 pr-4"><span className="rounded-md bg-[var(--panel-strong)] px-2 py-1 font-semibold">{{ ON_FARM: t.onFarm, IN_TRANSIT: t.inTransit, STORED: t.stored, SOLD: t.sold }[batch.status] ?? batch.status}</span></td>
               </tr>
             ))}
           </tbody>

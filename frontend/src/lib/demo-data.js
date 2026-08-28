@@ -81,6 +81,10 @@ translations.gu = { headline: "ખેતરથી ખરીદદાર સુ�
 translations.ur = { headline: "کھیت سے خریدار تک براہ راست فصل کی ملکیت", subhead: "درمیان والے کو قیمت کا اختیار دیے بغیر فصل کی فہرست، خرید، نقل و حمل، ذخیرہ اور موازنہ کریں۔", dashboard: "ڈیش بورڈ", forecast: "طلب کی پیش گوئی", inventory: "لائیو ذخیرہ", listCrop: "فصل شامل کریں", buyerOffer: "پیشکش بھیجیں", checkIn: "اگلی کھیپ داخل کریں", checkOut: "ذخیرہ شدہ کھیپ نکالیں", logout: "لاگ آؤٹ", records: "ریکارڈز" };
 translations.kn = { headline: "ಜಮೀನಿನಿಂದ ಖರೀದಿದಾರರಿಗೆ ನೇರ ಬೆಳೆ ಮಾಲೀಕತ್ವ", subhead: "ಮಧ್ಯವರ್ತಿಗೆ ಬೆಲೆ ನಿಯಂತ್ರಣ ನೀಡದೆ ಬೆಳೆಗಳನ್ನು ಪಟ್ಟಿ ಮಾಡಿ, ಒಟ್ಟುಗೂಡಿಸಿ, ಸಾಗಿಸಿ, ಸಂಗ್ರಹಿಸಿ ಹೋಲಿಸಿ.", dashboard: "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್", forecast: "ಬೇಡಿಕೆ ಮುನ್ಸೂಚನೆ", inventory: "ಲೈವ್ ದಾಸ್ತಾನು", listCrop: "ಬೆಳೆ ಸೇರಿಸಿ", buyerOffer: "ಆಫರ್ ಕಳುಹಿಸಿ", checkIn: "ಮುಂದಿನ ಬ್ಯಾಚ್ ಚೆಕ್ ಇನ್", checkOut: "ಸಂಗ್ರಹಿತ ಬ್ಯಾಚ್ ಚೆಕ್ ಔಟ್", logout: "ಲಾಗ್ ಔಟ್", records: "ದಾಖಲೆಗಳು" };
 
+for (const locale of Object.keys(translations)) {
+  translations[locale] = { ...translations.en, ...translations[locale] };
+}
+
 export const initialBatches = [
   {
     id: "B-1402",

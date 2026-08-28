@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "seed": "node prisma/seed.js",
     "prisma:push": "prisma db push",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test": "node --test"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

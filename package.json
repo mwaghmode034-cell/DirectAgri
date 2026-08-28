@@ -11,6 +11,7 @@
     "web:build": "npm --workspace frontend run build",
     "api:dev": "npm --workspace backend run dev",
     "api:start": "npm --workspace backend run start",
-    "api:seed": "npm --workspace backend run seed"
+    "api:seed": "npm --workspace backend run seed",
+    "api:test": "npm --workspace backend test"
   }
 }

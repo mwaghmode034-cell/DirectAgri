@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -72,7 +73,7 @@ app.post("/api/crop-batches", requireAuth, async (request, response, next) => {
         pricePerKg: z.number().positive().optional()
       })
       .parse(request.body);
-    const parsed = body.text ? parseListing(body.text) : {};
+    const parsed = body.text ? await parseListing(body.text) : {};
     const { village, district } = locationParts(request.authUser);
     const batch = {
       ownerId: request.authUser.id,
@@ -140,10 +141,10 @@ app.patch("/api/crop-batches/:id", requireAuth, async (request, response, next) 
   }
 });
 
-app.post("/api/nlp-parse", (request, response, next) => {
+app.post("/api/nlp-parse", async (request, response, next) => {
   try {
     const body = z.object({ text: z.string().min(1) }).parse(request.body);
-    response.json(parseListing(body.text));
+    response.json(await parseListing(body.text));
   } catch (error) {
     next(error);
   }
@@ -396,6 +397,10 @@ app.get("/api/government/price-benchmark", requireAuth, async (request, response
 
 app.use(errorHandler);
 
-app.listen(port, () => {
-  console.log(`DirectAgri API listening on ${port}`);
-});
+export { app };
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  app.listen(port, () => {
+    console.log(`DirectAgri API listening on ${port}`);
+  });
+}
