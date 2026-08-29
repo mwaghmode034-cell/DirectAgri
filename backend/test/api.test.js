@@ -6,7 +6,7 @@ import { once } from "node:events";
 const port = 4400 + Math.floor(Math.random() * 200);
 const server = spawn(process.execPath, ["src/server.js"], {
   cwd: process.cwd(),
-  env: { ...process.env, PORT: String(port), MONGODB_URI: "", JWT_SECRET: "test-secret" },
+  env: { ...process.env, PORT: String(port), MONGODB_URI: "", JWT_SECRET: "test-secret", GEMINI_API_KEY: "" },
   stdio: ["ignore", "pipe", "pipe"]
 });
 
@@ -51,7 +51,7 @@ test("health endpoint reports the memory demo store", async () => {
 test("NLP endpoint parses a varied listing", async () => {
   const response = await request("/api/nlp-parse", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "3 tons onion at rate 28" }) });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { crop: "Onion", quantityKg: 3000, pricePerKg: 28 });
+  assert.deepEqual(await response.json(), { crop: "Onion", quantityKg: 3000, pricePerKg: 28, source: "rules" });
 });
 
 test("role isolation blocks a buyer from creating a crop listing", async () => {
@@ -66,9 +66,23 @@ test("completes listing, order, transport, storage, and escrow lifecycle", async
   const storage = await login("storage@directagri.dev");
   const headers = (session) => ({ "content-type": "application/json", authorization: `Bearer ${session.token}` });
 
-  const listingResponse = await request("/api/crop-batches", { method: "POST", headers: headers(farmer), body: JSON.stringify({ text: "1 ton rice at rate 30" }) });
+  const listingResponse = await request("/api/crop-batches", {
+    method: "POST",
+    headers: headers(farmer),
+    body: JSON.stringify({
+      text: "1 ton rice at rate 30",
+      listingIntent: "store",
+      storagePartnerId: "greenharvest",
+      vehicleMode: "transport-partner",
+      estimatedDistanceKm: 12.4,
+      estimatedFare: 223
+    })
+  });
   assert.equal(listingResponse.status, 201);
   const batch = (await listingResponse.json()).batch;
+  assert.equal(batch.listingIntent, "STORE");
+  assert.equal(batch.storagePartnerId, "greenharvest");
+  assert.equal(batch.estimatedFare, 223);
 
   const orderResponse = await request("/api/orders/aggregate", { method: "POST", headers: headers(buyer), body: JSON.stringify({ batchIds: [batch.id] }) });
   assert.equal(orderResponse.status, 201);

@@ -13,9 +13,11 @@ export default function AuthForm({ mode = "login" }) {
     const [locale, setCurrentLocale] = useState("en");
     const [isHydrated, setIsHydrated] = useState(false);
     const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", role: "farmer" });
+    const [credentialMode, setCredentialMode] = useState("email");
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const t = authTranslations[locale] ?? authTranslations.en;
+    const loginIdentifierLabel = isSignUp ? "Mobile number or email" : "Phone or email";
 
     useEffect(() => {
         const savedLocale = getLocale();
@@ -45,9 +47,25 @@ export default function AuthForm({ mode = "login" }) {
     async function submit(event) {
         event.preventDefault();
         setError("");
+
+        if (!isSignUp) {
+            const chosenIdentifier = credentialMode === "phone" ? form.phone : form.email;
+            if (!chosenIdentifier) {
+                setError(credentialMode === "phone" ? "Enter your mobile number to continue." : "Enter your email to continue.");
+                return;
+            }
+        }
+
+        if (isSignUp && !form.phone && !form.email) {
+            setError("Enter either a mobile number or email to create your account.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const session = isSignUp ? await signUp(form) : await signIn(form.email, form.password);
+            const session = isSignUp
+                ? await signUp(form)
+                : await signIn(credentialMode === "phone" ? form.phone : form.email, form.password);
             router.push(`/dashboard/${session.user.role}`);
         } catch (submitError) {
             setError(submitError.message);
@@ -78,9 +96,17 @@ export default function AuthForm({ mode = "login" }) {
                         <p className="mt-2 text-sm text-[var(--muted)]">{isSignUp ? t.chooseRole : t.signInText}</p>
                     </div>
                     <form className="space-y-4" onSubmit={submit}>
+                        {!isSignUp && (
+                            <div className="grid grid-cols-2 gap-2 rounded-lg border border-[var(--line)] bg-white p-1">
+                                <button type="button" className={`rounded-md px-3 py-2 text-sm font-semibold ${credentialMode === "email" ? "bg-[var(--leaf)] text-white" : "text-[var(--muted)]"}`} onClick={() => setCredentialMode("email")}>Email</button>
+                                <button type="button" className={`rounded-md px-3 py-2 text-sm font-semibold ${credentialMode === "phone" ? "bg-[var(--leaf)] text-white" : "text-[var(--muted)]"}`} onClick={() => setCredentialMode("phone")}>Mobile</button>
+                            </div>
+                        )}
                         {isSignUp && <Field icon={UserRound} label={t.name} name="name" value={form.name} onChange={updateField} placeholder="Asha Pawar" />}
-                        {isSignUp && <Field icon={Phone} label="Mobile number" name="phone" type="tel" value={form.phone} onChange={updateField} placeholder="+91 98765 43210" />}
-                        <Field icon={Mail} label={t.email} name="email" type="email" value={form.email} onChange={updateField} placeholder="you@example.com" />
+                        {isSignUp && <Field icon={Phone} label="Mobile number" name="phone" type="tel" value={form.phone} onChange={updateField} placeholder="+91 98765 43210" required />}
+                        {isSignUp && <Field icon={Mail} label="Email (optional)" name="email" type="email" value={form.email} onChange={updateField} placeholder="you@example.com or leave blank" required={false} />}
+                        {!isSignUp && credentialMode === "email" && <Field icon={Mail} label={t.email} name="email" type="email" value={form.email} onChange={updateField} placeholder="you@example.com" required={false} />}
+                        {!isSignUp && credentialMode === "phone" && <Field icon={Phone} label={loginIdentifierLabel} name="phone" type="text" value={form.phone} onChange={updateField} placeholder="+91 98765 43210" required={false} />}
                         <Field icon={LockKeyhole} label={t.password} name="password" type="password" value={form.password} onChange={updateField} placeholder="At least 6 characters" minLength={6} />
                         <div className="flex justify-end">
                             <Link href="/forgot-password" className="text-sm font-semibold text-[var(--leaf-dark)]">{t.forgot}</Link>
@@ -95,6 +121,6 @@ export default function AuthForm({ mode = "login" }) {
     );
 }
 
-function Field({ icon: Icon, label, ...props }) {
-    return <label className="block text-sm font-semibold">{label}<span className="focus-within:ring-2 mt-2 flex min-h-12 items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 focus-within:ring-[var(--leaf)]"><Icon size={17} className="text-[var(--leaf)]" /><input className="w-full bg-transparent outline-none" {...props} required /></span></label>;
+function Field({ icon: Icon, label, required = true, ...props }) {
+    return <label className="block text-sm font-semibold">{label}<span className="focus-within:ring-2 mt-2 flex min-h-12 items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 focus-within:ring-[var(--leaf)]"><Icon size={17} className="text-[var(--leaf)]" /><input className="w-full bg-transparent outline-none" {...props} required={required} /></span></label>;
 }

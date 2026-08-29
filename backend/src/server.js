@@ -33,7 +33,7 @@ const port = process.env.PORT ?? 4000;
 
 app.use(helmet());
 app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://localhost:3000" }));
-app.use(express.json());
+app.use(express.json({ limit: "6mb" }));
 app.use(morgan("tiny"));
 app.get("/health", async (request, response, next) => {
   try {
@@ -66,11 +66,17 @@ app.post("/api/crop-batches", requireAuth, async (request, response, next) => {
         text: z.string().optional(),
         cropType: z.string().optional(),
         quantityKg: z.number().int().positive().optional(),
-        pricePerKg: z.number().positive().optional()
+        pricePerKg: z.number().positive().optional(),
+        listingIntent: z.enum(["sell", "store"]).optional().default("sell"),
+        storagePartnerId: z.string().optional(),
+        vehicleMode: z.enum(["transport-partner", "own-vehicle"]).optional(),
+        estimatedDistanceKm: z.number().nonnegative().optional(),
+        estimatedFare: z.number().nonnegative().optional()
       })
       .parse(request.body);
     const parsed = body.text ? await parseListing(body.text) : {};
     const { village, district } = locationParts(request.authUser);
+    const storagePartner = body.listingIntent === "store" ? findStoragePartner(body.storagePartnerId) : null;
     const batch = {
       ownerId: request.authUser.id,
       farmer: request.authUser.name,
@@ -80,9 +86,15 @@ app.post("/api/crop-batches", requireAuth, async (request, response, next) => {
       quantityKg: body.quantityKg ?? parsed.quantityKg ?? 500,
       pricePerKg: body.pricePerKg ?? parsed.pricePerKg ?? 25,
       status: "ON_FARM",
+      listingIntent: body.listingIntent === "store" ? "STORE" : "SELL",
+      storagePartnerId: storagePartner?.id ?? null,
+      storagePartnerName: storagePartner ? `${storagePartner.name} · ${storagePartner.city}` : null,
+      vehicleMode: body.listingIntent === "store" ? (body.vehicleMode ?? "transport-partner") : null,
+      estimatedDistanceKm: body.listingIntent === "store" ? (body.estimatedDistanceKm ?? 0) : 0,
+      estimatedFare: body.listingIntent === "store" ? (body.estimatedFare ?? 0) : 0,
       quality: 86,
-      lat: 20.05 + Math.random() / 6,
-      lng: 73.9 + Math.random() / 5
+      lat: storagePartner?.lat ?? 20.05 + Math.random() / 6,
+      lng: storagePartner?.lng ?? 73.9 + Math.random() / 5
     };
 
     const batchNumber = makeBatchNumber(Date.now());
@@ -104,6 +116,16 @@ function makeBatchNumber(seed) {
   return `${alphabet[letterIndex]}${numberPart}`;
 }
 
+const STORAGE_PARTNERS = [
+  { id: "greenharvest", name: "GreenHarvest Cold Storage", city: "Nashik", lat: 20.01, lng: 73.78 },
+  { id: "safegrow", name: "SafeGrow Warehousing", city: "Malegaon", lat: 20.55, lng: 74.52 },
+  { id: "grainlink", name: "GrainLink Logistics Hub", city: "Pune", lat: 18.52, lng: 73.85 }
+];
+
+function findStoragePartner(id) {
+  return STORAGE_PARTNERS.find((partner) => partner.id === id) ?? STORAGE_PARTNERS[0];
+}
+
 function toBatchResponse(batch) {
   const batchId = batch._id?.toString() ?? batch.id ?? batch.batchNumber ?? "";
   return {
@@ -117,6 +139,12 @@ function toBatchResponse(batch) {
     quantityKg: batch.quantityKg,
     pricePerKg: batch.pricePerKg,
     status: batch.status,
+    listingIntent: batch.listingIntent ?? "SELL",
+    storagePartnerId: batch.storagePartnerId ?? null,
+    storagePartnerName: batch.storagePartnerName ?? null,
+    vehicleMode: batch.vehicleMode ?? null,
+    estimatedDistanceKm: batch.estimatedDistanceKm ?? 0,
+    estimatedFare: batch.estimatedFare ?? 0,
     quality: batch.quality,
     lat: batch.lat,
     lng: batch.lng
@@ -260,6 +288,65 @@ app.get("/api/orders/bids", requireAuth, async (request, response, next) => {
   try {
     const bids = await (await getDatabase()).collection("bids").find({ buyerId: request.authUser.id }).sort({ createdAt: -1 }).toArray();
     response.json({ bids: bids.map((bid) => ({ ...bid, id: bid._id.toString(), _id: undefined })) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/bids/received", requireAuth, async (request, response, next) => {
+  try {
+    if (request.authUser.role !== "farmer") return response.status(403).json({ error: "Only farmers can view incoming bids." });
+    const database = await getDatabase();
+    const bids = await database.collection("bids").find({}).sort({ createdAt: -1 }).toArray();
+    const batchIds = bids.map((bid) => bid.batchId).filter(Boolean).filter((id) => ObjectId.isValid(id));
+    const batches = batchIds.length ? await database.collection("cropBatches").find({ _id: { $in: batchIds.map((id) => new ObjectId(id)) } }).toArray() : [];
+    const batchMap = new Map(batches.map((batch) => [batch._id.toString(), toBatchResponse(batch)]));
+    response.json({
+      bids: bids
+        .filter((bid) => batchMap.has(String(bid.batchId)))
+        .map((bid) => ({
+          ...bid,
+          id: bid._id.toString(),
+          _id: undefined,
+          batch: batchMap.get(String(bid.batchId))
+        }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/bids/:id/accept", requireAuth, async (request, response, next) => {
+  try {
+    if (request.authUser.role !== "farmer") return response.status(403).json({ error: "Only farmers can accept bids." });
+    if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: "Invalid bid id." });
+    const database = await getDatabase();
+    const updatedBid = unwrapDocument(await database.collection("bids").findOneAndUpdate(
+      { _id: new ObjectId(request.params.id) },
+      { $set: { status: "ACCEPTED", acceptedAt: new Date() } },
+      { returnDocument: "after" }
+    ));
+    if (!updatedBid) return response.status(404).json({ error: "Bid was not found." });
+    await recordAudit("BID_ACCEPTED", request.params.id, request.authUser);
+    response.json({ bid: { ...updatedBid, id: updatedBid._id.toString(), _id: undefined } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/bids/:id/reject", requireAuth, async (request, response, next) => {
+  try {
+    if (request.authUser.role !== "farmer") return response.status(403).json({ error: "Only farmers can reject bids." });
+    if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: "Invalid bid id." });
+    const database = await getDatabase();
+    const updatedBid = unwrapDocument(await database.collection("bids").findOneAndUpdate(
+      { _id: new ObjectId(request.params.id) },
+      { $set: { status: "REJECTED", rejectedAt: new Date() } },
+      { returnDocument: "after" }
+    ));
+    if (!updatedBid) return response.status(404).json({ error: "Bid was not found." });
+    await recordAudit("BID_REJECTED", request.params.id, request.authUser);
+    response.json({ bid: { ...updatedBid, id: updatedBid._id.toString(), _id: undefined } });
   } catch (error) {
     next(error);
   }
@@ -416,7 +503,16 @@ app.use(errorHandler);
 export { app };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`DirectAgri API listening on ${port}`);
+  });
+
+  server.on("error", (error) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(`Port ${port} is already in use. Stop the existing process or change PORT in backend/.env.`);
+      process.exit(1);
+    }
+    console.error("Server startup error:", error);
+    process.exit(1);
   });
 }

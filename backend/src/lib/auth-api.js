@@ -2,26 +2,43 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import twilio from "twilio";
 import { z } from "zod";
 import { getDatabase } from "../config/mongodb.js";
 
 const roles = ["farmer", "buyer", "transporter", "storage", "government"];
+const optionalEmailSchema = z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().email().transform((value) => value.toLowerCase().trim()).optional()
+);
 const credentialsSchema = z.object({
-    email: z.string().email().transform((value) => value.toLowerCase().trim()),
+    email: optionalEmailSchema,
     password: z.string().min(6)
 });
-const signupSchema = credentialsSchema.extend({
+const signupSchema = z.object({
     name: z.string().min(2).max(80).trim(),
-    phone: z.string().trim().min(10).max(15).optional(),
+    email: optionalEmailSchema,
+    phone: z.preprocess(
+        (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+        z.string().trim().min(10).max(15).optional()
+    ),
+    password: z.string().min(6),
     role: z.enum(roles)
+}).refine((value) => Boolean(value.email || value.phone), {
+    message: "Either email or phone is required.",
+    path: ["email"]
 });
 
 export async function register(request, response, next) {
     try {
         const input = signupSchema.parse(request.body);
         const users = (await getDatabase()).collection("users");
-        const existingUser = await users.findOne({ email: input.email });
-        if (existingUser) return response.status(409).json({ error: "An account with this email already exists." });
+        const existingUser = input.email
+            ? await users.findOne({ email: input.email })
+            : await users.findOne({ phone: input.phone });
+        if (existingUser) {
+            return response.status(409).json({ error: input.email ? "An account with this email already exists." : "An account with this mobile number already exists." });
+        }
 
         const defaultLocations = {
             farmer: "Pimpalgaon, Nashik",
@@ -32,7 +49,7 @@ export async function register(request, response, next) {
         };
         const user = {
             name: input.name,
-            email: input.email,
+            email: input.email ?? "",
             phone: input.phone ?? "",
             passwordHash: await bcrypt.hash(input.password, 12),
             role: input.role,
@@ -50,10 +67,27 @@ export async function register(request, response, next) {
 
 export async function login(request, response, next) {
     try {
-        const input = credentialsSchema.parse(request.body);
-        const user = await (await getDatabase()).collection("users").findOne({ email: input.email });
-        if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
-            return response.status(401).json({ error: "Email or password is incorrect." });
+        const rawBody = request.body ?? {};
+        const email = typeof rawBody.email === "string" ? rawBody.email.trim().toLowerCase() : "";
+        const phone = typeof rawBody.phone === "string" ? rawBody.phone.trim() : "";
+        const password = typeof rawBody.password === "string" ? rawBody.password : "";
+        if (!password || password.length < 6) {
+            return response.status(400).json({ error: "Password is required." });
+        }
+
+        const query = email
+            ? { email }
+            : phone
+                ? { $or: [{ phone }, { email: phone }] }
+                : null;
+
+        if (!query) {
+            return response.status(400).json({ error: "Email or phone is required." });
+        }
+
+        const user = await (await getDatabase()).collection("users").findOne(query);
+        if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+            return response.status(401).json({ error: "Email/phone or password is incorrect." });
         }
         return response.json({ token: createToken(user), user: publicUser(user) });
     } catch (error) {
@@ -62,24 +96,82 @@ export async function login(request, response, next) {
 }
 
 const forgotPasswordSchema = z.object({
-    email: z.string().email().transform((value) => value.toLowerCase().trim())
+    email: optionalEmailSchema,
+    phone: z.preprocess(
+        (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+        z.string().trim().min(8).max(20).optional()
+    )
+}).refine((value) => Boolean(value.email || value.phone), {
+    message: "Email or phone is required.",
+    path: ["email"]
 });
-const resetPasswordSchema = credentialsSchema.extend({
-    code: z.string().trim().min(6).max(8)
+const resetPasswordSchema = z.object({
+    email: optionalEmailSchema,
+    phone: z.preprocess(
+        (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+        z.string().trim().min(8).max(20).optional()
+    ),
+    code: z.string().trim().min(6).max(8),
+    password: z.string().min(6)
+}).refine((value) => Boolean(value.email || value.phone), {
+    message: "Email or phone is required.",
+    path: ["email"]
 });
+
+function resolveMailConfig() {
+    const host = process.env.SMTP_HOST || process.env.EMAIL_HOST;
+    const user = process.env.SMTP_USER || process.env.EMAIL_USER;
+    const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+    const port = Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587);
+    const secure = String(process.env.SMTP_SECURE ?? process.env.EMAIL_SECURE ?? "false").toLowerCase() === "true";
+    const from = process.env.MAIL_FROM || process.env.EMAIL_FROM || user;
+    return { host, user, pass, port, secure, from };
+}
+
+function resolveTwilioConfig() {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    return { accountSid, authToken, phoneNumber };
+}
+
+async function sendSmsOtp(toPhoneNumber, resetCode) {
+    try {
+        const { accountSid, authToken, phoneNumber } = resolveTwilioConfig();
+        if (!accountSid || !authToken || !phoneNumber) {
+            console.warn("Twilio credentials not configured. SMS not sent.");
+            return false;
+        }
+        const client = twilio(accountSid, authToken);
+        await client.messages.create({
+            body: `Your DirectAgri password reset code is ${resetCode}. It expires in 15 minutes. Do not share this code.`,
+            from: phoneNumber,
+            to: toPhoneNumber
+        });
+        return true;
+    } catch (error) {
+        console.error("Failed to send SMS via Twilio:", error.message);
+        return false;
+    }
+}
 
 export async function forgotPassword(request, response, next) {
     try {
         const input = forgotPasswordSchema.parse(request.body);
         const users = (await getDatabase()).collection("users");
-        const user = await users.findOne({ email: input.email });
+        const user = await users.findOne(input.email ? { email: input.email } : { phone: input.phone });
         if (!user) {
-            return response.json({ message: "If an account exists for this email, a reset code is ready to use." });
+            return response.json({
+                message: input.phone
+                    ? "If an account exists for this mobile number, a reset code is ready to use."
+                    : "If an account exists for this email, a reset code is ready to use."
+            });
         }
 
         const resetCode = String(crypto.randomInt(100000, 1000000));
+        const userLookup = input.email ? { email: input.email } : { phone: input.phone };
         await users.findOneAndUpdate(
-            { email: input.email },
+            userLookup,
             {
                 $set: {
                     resetCodeHash: await bcrypt.hash(resetCode, 12),
@@ -88,39 +180,63 @@ export async function forgotPassword(request, response, next) {
             }
         );
 
-        // try to send the reset code via email if SMTP is configured
-        let mailerConfigured = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
-        if (mailerConfigured) {
+        const contactValue = input.email ?? user.phone;
+        const isPhoneFlow = !input.email && Boolean(user.phone);
+        const mailConfig = resolveMailConfig();
+        let sendSucceeded = false;
+
+        if (input.email && mailConfig.host && mailConfig.user && mailConfig.pass) {
             try {
                 const transporter = nodemailer.createTransport({
-                    host: process.env.SMTP_HOST,
-                    port: Number(process.env.SMTP_PORT) || 587,
-                    secure: (process.env.SMTP_SECURE === "true"),
-                    auth: {
-                        user: process.env.SMTP_USER,
-                        pass: process.env.SMTP_PASS
-                    }
+                    host: mailConfig.host,
+                    port: mailConfig.port,
+                    secure: mailConfig.secure,
+                    auth: { user: mailConfig.user, pass: mailConfig.pass }
                 });
-
-                const from = process.env.MAIL_FROM || process.env.SMTP_USER;
                 await transporter.sendMail({
-                    from,
+                    from: mailConfig.from,
                     to: input.email,
                     subject: "DirectAgri password reset code",
                     text: `Your DirectAgri password reset code is ${resetCode}. It expires in 15 minutes.`
                 });
+                sendSucceeded = true;
             } catch (mailErr) {
                 console.error("Failed to send reset code email:", mailErr);
-                mailerConfigured = false;
             }
         }
 
-        // For security, only return the raw reset code in responses when mailer is not configured (development fallback).
-        if (!mailerConfigured) {
-            return response.json({ message: "Use this reset code to set a new password. It expires in 15 minutes.", resetCode });
+        if (!input.email && isPhoneFlow) {
+            // Try to send SMS via Twilio
+            sendSucceeded = await sendSmsOtp(user.phone, resetCode);
         }
 
-        return response.json({ message: "If an account exists for this email, a reset code has been sent." });
+        if (!sendSucceeded) {
+            if (!isPhoneFlow) {
+                return response.status(503).json({
+                    error: "Unable to send the reset email. Check the Gmail SMTP configuration and try again."
+                });
+            }
+            return response.json({
+                message: isPhoneFlow
+                    ? "Use this mobile reset code to set a new password. It expires in 15 minutes."
+                    : "Use this reset code to set a new password. It expires in 15 minutes.",
+                resetCode,
+                deliveryMode: isPhoneFlow ? "sms" : "email"
+            });
+        }
+
+        if (isPhoneFlow) {
+            return response.json({
+                message: "A reset code has been sent to your mobile number.",
+                resetCode,
+                deliveryMode: "sms"
+            });
+        }
+
+        return response.json({
+            message: "If an account exists for this email, a reset code has been sent.",
+            deliveryMode: "email"
+        });
     } catch (error) {
         return next(error);
     }
@@ -130,7 +246,7 @@ export async function resetPassword(request, response, next) {
     try {
         const input = resetPasswordSchema.parse(request.body);
         const users = (await getDatabase()).collection("users");
-        const user = await users.findOne({ email: input.email });
+        const user = await users.findOne(input.email ? { email: input.email } : { phone: input.phone });
         const expired = !user?.resetCodeExpiresAt || new Date(user.resetCodeExpiresAt).getTime() < Date.now();
         const codeOk = user?.resetCodeHash && (await bcrypt.compare(input.code, user.resetCodeHash));
         if (!user || expired || !codeOk) {
@@ -138,7 +254,7 @@ export async function resetPassword(request, response, next) {
         }
 
         await users.findOneAndUpdate(
-            { email: input.email },
+            input.email ? { email: input.email } : { phone: input.phone },
             {
                 $set: {
                     passwordHash: await bcrypt.hash(input.password, 12),
@@ -169,5 +285,5 @@ function createToken(user) {
 }
 
 function publicUser(user) {
-    return { id: user._id?.toString(), name: user.name, email: user.email, phone: user.phone ?? "", role: user.role, location: user.location ?? null };
+    return { id: user._id?.toString(), name: user.name, email: user.email ?? "", phone: user.phone ?? "", role: user.role, location: user.location ?? null };
 }

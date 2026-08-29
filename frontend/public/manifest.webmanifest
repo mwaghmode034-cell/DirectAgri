@@ -1,0 +1,9 @@
+{
+  "name": "DirectAgri",
+  "short_name": "DirectAgri",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e6",
+  "theme_color": "#2f6f4e",
+  "description": "DirectAgri marketplace for farmers, buyers, transporters, storage partners and government oversight."
+}

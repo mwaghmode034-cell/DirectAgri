@@ -1,5 +1,6 @@
 import { MongoClient } from "mongodb";
 import { MemoryDatabase } from "../lib/memory-db.js";
+import { ensureDemoAccounts } from "../lib/demo-seed.js";
 
 let client;
 let database;
@@ -15,6 +16,7 @@ export async function getDatabase() {
             await client.connect();
             database = client.db(process.env.MONGODB_DB ?? "directagri");
             await ensureCollections(database);
+            await ensureDemoAccounts(database);
             return database;
         } catch (error) {
             await client?.close().catch(() => { });
@@ -27,6 +29,7 @@ export async function getDatabase() {
 
     usingMemory = true;
     database = new MemoryDatabase();
+    await ensureDemoAccounts(database);
     return database;
 }
 

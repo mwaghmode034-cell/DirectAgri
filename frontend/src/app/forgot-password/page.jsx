@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, KeyRound, Leaf, LockKeyhole, Mail } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,7 @@ export default function ForgotPasswordPage() {
     const [locale, setCurrentLocale] = useState("en");
     const [isHydrated, setIsHydrated] = useState(false);
     const [step, setStep] = useState("request");
-    const [form, setForm] = useState({ email: "", code: "", password: "", confirmPassword: "" });
+    const [form, setForm] = useState({ identifier: "", code: "", password: "", confirmPassword: "" });
     const [resetCode, setResetCode] = useState("");
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
         setMessage("");
         setIsSubmitting(true);
         try {
-            const result = await requestPasswordReset(form.email);
+            const result = await requestPasswordReset(form.identifier);
             setResetCode(result.resetCode ?? "");
             setMessage(result.message);
             setStep("reset");
@@ -69,7 +69,11 @@ export default function ForgotPasswordPage() {
         }
         setIsSubmitting(true);
         try {
-            const result = await resetPassword({ email: form.email, code: form.code, password: form.password });
+            const result = await resetPassword({
+                email: form.identifier,
+                code: form.code,
+                password: form.password
+            });
             setMessage(result.message);
             setTimeout(() => router.push("/login"), 1200);
         } catch (submitError) {
@@ -102,7 +106,7 @@ export default function ForgotPasswordPage() {
                     </div>
                     {step === "request" ? (
                         <form className="space-y-4" onSubmit={submitRequest}>
-                            <label className="block text-sm font-semibold">{t.email}<span className="focus-within:ring-2 mt-2 flex min-h-12 items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 focus-within:ring-[var(--leaf)]"><Mail size={17} className="text-[var(--leaf)]" /><input className="w-full bg-transparent outline-none" name="email" type="email" value={form.email} onChange={updateField} placeholder="you@example.com" required /></span></label>
+                            <label className="block text-sm font-semibold">{t.email}<span className="focus-within:ring-2 mt-2 flex min-h-12 items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 focus-within:ring-[var(--leaf)]"><Mail size={17} className="text-[var(--leaf)]" /><input className="w-full bg-transparent outline-none" name="identifier" type="email" value={form.identifier} onChange={updateField} placeholder="you@example.com" required /></span></label>
                             {error && <p className="rounded-lg bg-[#fbe9e3] px-3 py-2 text-sm font-semibold text-[var(--rust)]" role="alert">{error}</p>}
                             <button className="focus-ring flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[var(--leaf)] px-4 font-semibold text-white disabled:opacity-60" disabled={isSubmitting}>{isSubmitting ? t.sending : t.sendCode}<ArrowRight size={18} /></button>
                         </form>
@@ -110,7 +114,7 @@ export default function ForgotPasswordPage() {
                         <form className="space-y-4" onSubmit={submitReset}>
                             {resetCode && (
                                 <p className="rounded-lg bg-[var(--sky)] px-3 py-2 text-sm font-semibold text-[var(--leaf-dark)]">
-                                    Demo reset code for {form.email}: <span className="tracking-widest">{resetCode}</span>
+                                    Demo reset code for {form.identifier}: <span className="tracking-widest">{resetCode}</span>
                                 </p>
                             )}
                             <label className="block text-sm font-semibold">{t.resetCode}<span className="focus-within:ring-2 mt-2 flex min-h-12 items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 focus-within:ring-[var(--leaf)]"><KeyRound size={17} className="text-[var(--leaf)]" /><input className="w-full bg-transparent outline-none" name="code" value={form.code} onChange={updateField} placeholder="6-digit code" minLength={6} required /></span></label>

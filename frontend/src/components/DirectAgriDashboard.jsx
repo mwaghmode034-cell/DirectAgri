@@ -95,6 +95,9 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const [choiceMode, setChoiceMode] = useState("sell");
   const [selectedStorageId, setSelectedStorageId] = useState(STORAGE_GODOWNS[0].id);
   const [selectedVehicle, setSelectedVehicle] = useState("transport-partner");
+  const [selectedBatchIds, setSelectedBatchIds] = useState([]);
+  const [customOfferPrice, setCustomOfferPrice] = useState("");
+  const [qualityPhoto, setQualityPhoto] = useState(null);
   const t = { ...(translations[locale] ?? translations.en), ...(dashboardTranslations[locale] ?? dashboardTranslations.en) };
   const farmerName = getSession()?.user?.name;
   const activeBatches = batches.filter((batch) => batch.status !== "SOLD");
@@ -121,14 +124,16 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   useEffect(() => {
     apiGet("/api/crop-batches")
       .then(({ batches: savedBatches }) => {
-        const normalizedBatches = (savedBatches?.length ? savedBatches : DEMO_BATCHES).slice(0, 5);
+        const normalizedBatches = savedBatches ?? [];
         setBatches(normalizedBatches);
+        setSelectedBatchIds(normalizedBatches.filter((batch) => batch.status !== "SOLD").map((batch) => batch.id));
         if (normalizedBatches[0]) setBidBatch(normalizedBatches[0].id);
       })
       .catch(() => {
         setBatches(DEMO_BATCHES);
+        setSelectedBatchIds(DEMO_BATCHES.filter((batch) => batch.status !== "SOLD").map((batch) => batch.id));
         setBidBatch(DEMO_BATCHES[0]?.id ?? "");
-        setBatchLoadError("Showing demo inventory data.");
+        setBatchLoadError("Live inventory could not be reached; using demo inventory for the current session.");
       });
   }, []);
 
@@ -140,17 +145,54 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   }, [role]);
 
   useEffect(() => {
-    if (role !== "government") return;
-    apiGet("/api/government/stats")
-      .then(({ adoption }) => setGovernmentStats(adoption ?? DEMO_GOVERNMENT_STATS))
-      .catch(() => setGovernmentStats(DEMO_GOVERNMENT_STATS));
+    if (role !== "farmer" && role !== "government") return;
+    apiGet("/api/forecast")
+      .then(({ forecast }) => {
+        const liveForecast = (forecast ?? []).map((item) => ({
+          crop: item.crop,
+          mandi: item.mandi,
+          platform: item.platform
+        }));
+        setForecastData(liveForecast.length ? liveForecast : DEMO_FORECAST);
+      })
+      .catch(() => setForecastData(DEMO_FORECAST));
   }, [role]);
 
   useEffect(() => {
-    apiGet("/api/forecast").then(({ forecast: savedForecast }) => {
-      setForecastData((savedForecast ?? DEMO_FORECAST).slice(0, 5));
-    }).catch(() => setForecastData(DEMO_FORECAST));
-  }, []);
+    if (role !== "government") return;
+    apiGet("/api/government/stats")
+      .then(({ adoption, kpis }) => setGovernmentStats({ ...(adoption ?? DEMO_GOVERNMENT_STATS), kpis: kpis ?? DEMO_GOVERNMENT_STATS.kpis }))
+      .catch(() => setGovernmentStats(DEMO_GOVERNMENT_STATS));
+
+    apiGet("/api/government/audit-log")
+      .then(({ auditLogs }) => {
+        if (auditLogs?.length) setGovernmentStats((current) => ({ ...(current ?? DEMO_GOVERNMENT_STATS), auditLogs }));
+      })
+      .catch(() => setGovernmentStats((current) => ({ ...(current ?? DEMO_GOVERNMENT_STATS), auditLogs: [] })));
+  }, [role]);
+
+  useEffect(() => {
+    const selected = batches.find((batch) => batch.id === bidBatch) ?? batches.find((batch) => batch.status !== "SOLD");
+    if (selected) setCustomOfferPrice(String(Math.max(1, (selected.pricePerKg ?? 3) - 2)));
+  }, [bidBatch, batches]);
+
+  function toggleBatchSelection(batchId) {
+    setSelectedBatchIds((current) => current.includes(batchId) ? current.filter((id) => id !== batchId) : [...current, batchId]);
+  }
+
+  function readQualityPhoto(file) {
+    if (!file) {
+      setQualityPhoto(null);
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setStorageMessage("Choose a photo smaller than 4 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setQualityPhoto({ name: file.name, dataUrl: String(reader.result) });
+    reader.readAsDataURL(file);
+  }
 
   useEffect(() => {
     const savedLocale = getLocale();
@@ -190,17 +232,26 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
       const { batch } = await apiPost("/api/crop-batches", {
         cropType: listingReview.crop,
         quantityKg: Number(listingReview.quantityKg),
-        pricePerKg: Number(listingReview.pricePerKg)
+        pricePerKg: Number(listingReview.pricePerKg),
+        listingIntent: choiceMode,
+        storagePartnerId: choiceMode === "store" ? selectedStorageId : undefined,
+        vehicleMode: choiceMode === "store" ? selectedVehicle : undefined,
+        estimatedDistanceKm: choiceMode === "store" ? transportQuote.distance : 0,
+        estimatedFare: choiceMode === "store" ? transportQuote.fare : 0
       }, "farmer");
-      setBatches((current) => [
-        {
-          ...batch,
-          quality: batch.quality ?? 87,
-          lat: Number.isFinite(batch.lat) ? batch.lat : 20.05 + Math.random() / 6,
-          lng: Number.isFinite(batch.lng) ? batch.lng : 73.9 + Math.random() / 5
-        },
-        ...current
-      ]);
+      setBatches((current) => {
+        const next = [
+          {
+            ...batch,
+            quality: batch.quality ?? 87,
+            lat: Number.isFinite(batch.lat) ? batch.lat : 20.05 + Math.random() / 6,
+            lng: Number.isFinite(batch.lng) ? batch.lng : 73.9 + Math.random() / 5
+          },
+          ...current
+        ];
+        if (batch.status !== "SOLD") setSelectedBatchIds((ids) => [batch.id, ...ids.filter((id) => id !== batch.id)]);
+        return next;
+      });
       setListingReview(null);
       setListing("");
     } catch (error) {
@@ -214,7 +265,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
     setIsSubmittingBid(true);
     setBidMessage("");
     try {
-      const { bid } = await apiPost("/api/orders/bids", { batchId, offerPrice }, "buyer");
+      const { bid } = await apiPost("/api/orders/bids", { batchId, offerPrice: Number(offerPrice) }, "buyer");
       setBidMessage(`Offer ${bid.id} submitted at Rs ${bid.offerPrice}/kg.`);
     } catch (error) {
       setBidMessage(error.message);
@@ -224,11 +275,15 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   }
 
   async function updateStorage(batchId, action) {
+    if (!qualityPhoto?.dataUrl) {
+      setStorageMessage(t.photoRequired ?? "Attach a quality photo before check-in or check-out.");
+      return;
+    }
     setIsStorageAction(true);
     setStorageMessage("");
     try {
       const path = action === "checkin" ? "/api/storage/checkin" : "/api/storage/checkout";
-      const { batch } = await apiPost(path, { batchId, qualityScore, photoUrl: "/demo/quality.jpg" }, "storage");
+      const { batch } = await apiPost(path, { batchId, qualityScore, photoUrl: qualityPhoto.dataUrl }, "storage");
       setBatches((current) => current.map((item) => item.id === batch.id ? { ...item, status: batch.status, quality: batch.quality ?? item.quality } : item));
       setStorageMessage(`${action === "checkin" ? "Checked in" : "Checked out"} batch successfully.`);
     } catch (error) {
@@ -239,9 +294,13 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   }
 
   async function createOrder() {
-    if (!activeBatches.length) return;
+    const batchIds = selectedBatchIds.filter((id) => activeBatches.some((batch) => batch.id === id));
+    if (!batchIds.length) {
+      setOrderMessage("Select at least one batch for the bulk order.");
+      return;
+    }
     try {
-      const { order } = await apiPost("/api/orders/aggregate", { batchIds: [activeBatches[0].id] }, "buyer");
+      const { order } = await apiPost("/api/orders/aggregate", { batchIds }, "buyer");
       setCurrentOrder(order);
       setOrderMessage(`Order ${order.id} created and escrow locked.`);
     } catch (error) {
@@ -341,7 +400,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
           <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
               {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} reviewListing={reviewListing} verifyListing={verifyListing} listingReview={listingReview} setListingReview={setListingReview} cancelReview={() => { setListingReview(null); setListingError(""); }} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} choiceMode={choiceMode} setChoiceMode={setChoiceMode} selectedStorageId={selectedStorageId} setSelectedStorageId={setSelectedStorageId} selectedVehicle={selectedVehicle} setSelectedVehicle={setSelectedVehicle} transportQuote={transportQuote} />}
-              {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} t={t} />}
+              {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} customOfferPrice={customOfferPrice} setCustomOfferPrice={setCustomOfferPrice} t={t} />}
               {role === "transporter" && <TransporterPanel route={route} availableOrder={availableOrder} acceptDelivery={acceptDelivery} transporterMessage={transporterMessage} t={t} />}
               {role === "storage" && <StoragePanel batches={activeBatches} qualityScore={qualityScore} setQualityScore={setQualityScore} updateStorage={updateStorage} isStorageAction={isStorageAction} storageMessage={storageMessage} t={t} />}
               {role === "government" && <GovernmentPanel batches={batches} stats={governmentStats} t={t} />}
@@ -428,6 +487,11 @@ function FarmerPanel({ listing, setListing, reviewListing, verifyListing, listin
                 <option value="own-vehicle">{t.ownVehicle ?? "Own vehicle"}</option>
               </select>
             </label>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <ParsedTile label={distanceText} value={`${transportQuote.distance} km`} />
+              <ParsedTile label={fareEstimateText} value={`₹${transportQuote.fare}`} />
+              <ParsedTile label={modeText} value={transportQuote.vehicle} />
+            </div>
           </div>
         ) : (
           <div className="mt-4 rounded-lg border border-[var(--line)] bg-white p-4">
@@ -436,12 +500,6 @@ function FarmerPanel({ listing, setListing, reviewListing, verifyListing, listin
             </div>
           </div>
         )}
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <ParsedTile label={distanceText} value={`${transportQuote.distance} km`} />
-          <ParsedTile label={fareEstimateText} value={`₹${transportQuote.fare}`} />
-          <ParsedTile label={modeText} value={transportQuote.vehicle} />
-        </div>
       </div>
 
       <button className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-60" onClick={reviewListing} disabled={isListing || !listing.trim()}>
@@ -486,10 +544,11 @@ function ReviewField({ label, type = "text", value, onChange }) {
   );
 }
 
-function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSubmittingBid, bidMessage, createOrder, releaseEscrow, currentOrder, orderMessage, t }) {
+function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSubmittingBid, bidMessage, createOrder, releaseEscrow, currentOrder, orderMessage, customOfferPrice, setCustomOfferPrice, t }) {
   const selected = batches.find((batch) => batch.id === bidBatch) ?? batches[0];
   const averageQuality = batches.length ? Math.round(batches.reduce((sum, batch) => sum + (batch.quality ?? 0), 0) / batches.length) : 0;
-  const offerPrice = Math.max(1, (selected?.pricePerKg ?? 3) - 2);
+  const defaultOffer = Math.max(1, (selected?.pricePerKg ?? 3) - 2);
+  const offerPrice = Number(customOfferPrice || defaultOffer);
   return (
     <>
       <PanelTitle icon={Lock} label={t.buyer} title={`${t.available} / ${t.escrow}`} />
@@ -506,6 +565,15 @@ function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSu
               <option key={batch.id} value={batch.id}>{batch.batchNumber ?? batch.id} · {batch.crop} - {batch.farmer}</option>
             ))}
           </select>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(1, Number((selected?.pricePerKg ?? 3) + 5))}
+            value={customOfferPrice}
+            onChange={(event) => setCustomOfferPrice(event.target.value)}
+            className="focus-ring min-h-11 w-32 rounded-md border border-[var(--line)] px-3"
+            aria-label="Buyer offer price"
+          />
           <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-[var(--crop)] px-4 py-3 font-semibold text-[var(--ink)] disabled:cursor-wait disabled:opacity-60" onClick={() => selected && submitBid(selected.id, offerPrice)} disabled={!selected || isSubmittingBid}>
             <ArrowRight size={18} aria-hidden="true" />
             {isSubmittingBid ? t.submit : `${t.buyerOffer} · ₹${offerPrice}/${t.kg}`}

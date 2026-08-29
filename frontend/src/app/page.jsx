@@ -25,7 +25,11 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
   const t = copy[locale] ?? copy.en;
   const roles = [
-    [t.roles[0][0], t.roles[0][1], Leaf], [t.roles[1][0], t.roles[1][1], ChartNoAxesCombined], [t.roles[2][0], t.roles[2][1], MapPinned], [t.roles[3][0], t.roles[3][1], Warehouse]
+    [t.roles[0][0], t.roles[0][1], Leaf],
+    [t.roles[1][0], t.roles[1][1], ChartNoAxesCombined],
+    [t.roles[2][0], t.roles[2][1], MapPinned],
+    [t.roles[3][0], t.roles[3][1], Warehouse],
+    ["Government", "Monitor adoption, price uplift, and dispute trends for the wider ecosystem.", ShieldCheck]
   ];
 
   useEffect(() => {

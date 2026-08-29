@@ -9,6 +9,7 @@ datasource db {
 
 model User {
   id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  email         String?
   role          String
   name          String
   phone         String      @unique
@@ -16,6 +17,8 @@ model User {
   kycVerified   Boolean     @default(false)
   cropBatches   CropBatch[]
   ordersAsBuyer Order[]     @relation("BuyerOrders")
+
+  @@index([email])
 }
 
 model CropBatch {

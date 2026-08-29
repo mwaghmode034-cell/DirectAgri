@@ -2,20 +2,28 @@ import { apiPost } from "@/lib/api-client";
 
 const sessionKey = "directagri-session";
 
-export async function signIn(email, password) {
-    return saveAuth(await apiPost("/api/auth/login", { email, password }));
+export async function signIn(identifier, password) {
+    const payload = identifier.includes("@") ? { email: identifier, password } : { phone: identifier, password };
+    return saveAuth(await apiPost("/api/auth/login", payload));
 }
 
-export async function signUp({ name, email, password, role }) {
-    return saveAuth(await apiPost("/api/auth/signup", { name, email, password, role }));
+export async function signUp({ name, email, phone, password, role }) {
+    return saveAuth(await apiPost("/api/auth/signup", { name, email, phone, password, role }));
 }
 
-export async function requestPasswordReset(email) {
-    return apiPost("/api/auth/forgot-password", { email });
+export async function requestPasswordReset(identifier) {
+    const normalized = String(identifier ?? "").trim();
+    if (!normalized) {
+        throw new Error("Email is required.");
+    }
+    return apiPost("/api/auth/forgot-password", { email: normalized });
 }
 
-export async function resetPassword({ email, code, password }) {
-    return apiPost("/api/auth/reset-password", { email, code, password });
+export async function resetPassword({ email, phone, code, password }) {
+    const payload = { code, password };
+    if (email) payload.email = email;
+    if (phone) payload.phone = phone;
+    return apiPost("/api/auth/reset-password", payload);
 }
 
 export function getSession() {
