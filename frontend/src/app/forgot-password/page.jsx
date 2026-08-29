@@ -9,7 +9,8 @@ import { applyLocale, authTranslations, getLocale, languageOptions, setLocale } 
 
 export default function ForgotPasswordPage() {
     const router = useRouter();
-    const [locale, setCurrentLocale] = useState(getLocale);
+    const [locale, setCurrentLocale] = useState("en");
+    const [isHydrated, setIsHydrated] = useState(false);
     const [step, setStep] = useState("request");
     const [form, setForm] = useState({ email: "", code: "", password: "", confirmPassword: "" });
     const [resetCode, setResetCode] = useState("");
@@ -17,6 +18,19 @@ export default function ForgotPasswordPage() {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const t = authTranslations[locale] ?? authTranslations.en;
+
+    useEffect(() => {
+        const savedLocale = getLocale();
+        setCurrentLocale(savedLocale);
+        setIsHydrated(true);
+    }, []);
+
+    useEffect(() => {
+        if (isHydrated) {
+            applyLocale(locale);
+            setLocale(locale);
+        }
+    }, [locale, isHydrated]);
 
     function changeLocale(nextLocale) {
         setCurrentLocale(nextLocale);

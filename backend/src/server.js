@@ -85,18 +85,30 @@ app.post("/api/crop-batches", requireAuth, async (request, response, next) => {
       lng: 73.9 + Math.random() / 5
     };
 
-    const result = await (await getDatabase()).collection("cropBatches").insertOne({ ...batch, createdAt: new Date() });
-    const savedBatch = { ...batch, _id: result.insertedId };
+    const batchNumber = makeBatchNumber(Date.now());
+    const result = await (await getDatabase()).collection("cropBatches").insertOne({ ...batch, batchNumber, createdAt: new Date() });
+    const savedBatch = { ...batch, _id: result.insertedId, batchNumber };
     await recordAudit("CROP_BATCH_CREATED", result.insertedId.toString(), request.authUser);
-    response.status(201).json({ batch: toBatchResponse(savedBatch), audit: `${request.authUser.role} created crop batch ${result.insertedId}` });
+    response.status(201).json({ batch: toBatchResponse(savedBatch), audit: `${request.authUser.role} created crop batch ${savedBatch.batchNumber}` });
   } catch (error) {
     next(error);
   }
 });
 
+function makeBatchNumber(seed) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const raw = String(seed ?? Date.now());
+  const numericSeed = [...raw].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const letterIndex = numericSeed % alphabet.length;
+  const numberPart = String((numericSeed * 13) % 900 + 100).padStart(3, "0");
+  return `${alphabet[letterIndex]}${numberPart}`;
+}
+
 function toBatchResponse(batch) {
+  const batchId = batch._id?.toString() ?? batch.id ?? batch.batchNumber ?? "";
   return {
-    id: batch._id?.toString() ?? batch.id,
+    id: batchId,
+    batchNumber: batch.batchNumber ?? makeBatchNumber(batchId),
     ownerId: batch.ownerId,
     farmer: batch.farmer,
     crop: batch.crop,

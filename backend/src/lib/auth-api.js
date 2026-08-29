@@ -12,6 +12,7 @@ const credentialsSchema = z.object({
 });
 const signupSchema = credentialsSchema.extend({
     name: z.string().min(2).max(80).trim(),
+    phone: z.string().trim().min(10).max(15).optional(),
     role: z.enum(roles)
 });
 
@@ -32,6 +33,7 @@ export async function register(request, response, next) {
         const user = {
             name: input.name,
             email: input.email,
+            phone: input.phone ?? "",
             passwordHash: await bcrypt.hash(input.password, 12),
             role: input.role,
             location: defaultLocations[input.role],
@@ -167,5 +169,5 @@ function createToken(user) {
 }
 
 function publicUser(user) {
-    return { id: user._id?.toString(), name: user.name, email: user.email, role: user.role, location: user.location ?? null };
+    return { id: user._id?.toString(), name: user.name, email: user.email, phone: user.phone ?? "", role: user.role, location: user.location ?? null };
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  BarChart3,
   Check,
   Languages,
   Lock,
@@ -21,10 +22,58 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import { getSession, signOut } from "@/lib/auth-client";
 import { applyLocale, dashboardTranslations, getLocale, languageOptions, setLocale } from "@/lib/i18n";
 
+const DEMO_BATCHES = [
+  { id: "64f5d1a9e4b2c3d7a9b4f2a1", batchNumber: "A114", crop: "Tomato", farmer: "Anita Patil", quantityKg: 420, pricePerKg: 18, status: "ON_FARM", quality: 89, village: "Pimpalgaon", district: "Nashik" },
+  { id: "64f5d1a9e4b2c3d7a9b4f2a2", batchNumber: "B238", crop: "Onion", farmer: "Rahul Shinde", quantityKg: 670, pricePerKg: 24, status: "IN_TRANSIT", quality: 82, village: "Niphad", district: "Nashik" },
+  { id: "64f5d1a9e4b2c3d7a9b4f2a3", batchNumber: "C306", crop: "Pomegranate", farmer: "Saira Khan", quantityKg: 310, pricePerKg: 42, status: "STORED", quality: 92, village: "Satana", district: "Nashik" },
+  { id: "64f5d1a9e4b2c3d7a9b4f2a4", batchNumber: "D412", crop: "Wheat", farmer: "Kiran More", quantityKg: 580, pricePerKg: 15, status: "ON_FARM", quality: 87, village: "Yeola", district: "Nashik" },
+  { id: "64f5d1a9e4b2c3d7a9b4f2a5", batchNumber: "E511", crop: "Chilli", farmer: "Meera Jadhav", quantityKg: 260, pricePerKg: 35, status: "SOLD", quality: 90, village: "Sinner", district: "Nashik" }
+];
+
+const DEMO_FORECAST = [
+  { crop: "Onion", mandi: 26, platform: 31 },
+  { crop: "Tomato", mandi: 18, platform: 20 },
+  { crop: "Pomegranate", mandi: 44, platform: 49 },
+  { crop: "Wheat", mandi: 13, platform: 17 },
+  { crop: "Chilli", mandi: 33, platform: 36 }
+];
+
+const DEMO_GOVERNMENT_STATS = {
+  districtsCovered: 8,
+  activeBatches: 486,
+  openDisputes: 12,
+  auditEvents: 64,
+  kpis: [
+    { label: "Active crop batches", value: "486" },
+    { label: "Districts covered", value: "8" },
+    { label: "Escrow value", value: "₹42.8L" },
+    { label: "Farmer margin", value: "+18%" }
+  ]
+};
+
+const STORAGE_GODOWNS = [
+  { id: "greenharvest", name: "GreenHarvest Cold Storage", city: "Nashik", lat: 20.01, lng: 73.78 },
+  { id: "safegrow", name: "SafeGrow Warehousing", city: "Malegaon", lat: 20.55, lng: 74.52 },
+  { id: "grainlink", name: "GrainLink Logistics Hub", city: "Pune", lat: 18.52, lng: 73.85 }
+];
+
+const BUYER_LOCATIONS = [
+  { id: "mumbai", name: "Mumbai Buyer Cluster", city: "Mumbai", lat: 19.07, lng: 72.88 },
+  { id: "nashik", name: "Nashik Procurement Yard", city: "Nashik", lat: 20.01, lng: 73.79 },
+  { id: "aurangabad", name: "Aurangabad Market", city: "Aurangabad", lat: 19.88, lng: 75.34 }
+];
+
+function distanceKm(from, to) {
+  const latDelta = (from.lat - to.lat) * 111.32;
+  const lngDelta = (from.lng - to.lng) * 111.32 * Math.cos((from.lat + to.lat) / 2 * (Math.PI / 180));
+  return Math.max(1, Number(Math.hypot(latDelta, lngDelta).toFixed(1)));
+}
+
 export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const router = useRouter();
   const role = initialRole;
-  const [locale, setCurrentLocale] = useState(getLocale);
+  const [locale, setCurrentLocale] = useState("en");
+  const [isHydrated, setIsHydrated] = useState(false);
   const [batches, setBatches] = useState([]);
   const [listing, setListing] = useState("");
   const [bidBatch, setBidBatch] = useState("");
@@ -43,12 +92,25 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   const [transporterMessage, setTransporterMessage] = useState("");
   const [governmentStats, setGovernmentStats] = useState(null);
   const [forecastData, setForecastData] = useState([]);
+  const [choiceMode, setChoiceMode] = useState("sell");
+  const [selectedStorageId, setSelectedStorageId] = useState(STORAGE_GODOWNS[0].id);
+  const [selectedVehicle, setSelectedVehicle] = useState("transport-partner");
   const t = { ...(translations[locale] ?? translations.en), ...(dashboardTranslations[locale] ?? dashboardTranslations.en) };
   const farmerName = getSession()?.user?.name;
   const activeBatches = batches.filter((batch) => batch.status !== "SOLD");
   const route = useMemo(() => planRoute(activeBatches), [activeBatches]);
   const selectedRole = roles.find((item) => item.id === role) ?? roles[0];
   const ActiveRoleIcon = selectedRole.icon;
+  const dashboardLabel = t.dashboard ?? "Dashboard";
+  const logoutLabel = t.logout ?? "Log out";
+  const farmOrigin = { lat: 20.05, lng: 73.9 };
+  const selectedStorage = STORAGE_GODOWNS.find((item) => item.id === selectedStorageId) ?? STORAGE_GODOWNS[0];
+  const destinationPoint = choiceMode === "store" ? selectedStorage : null;
+  const transportDistance = choiceMode === "store" ? distanceKm(farmOrigin, destinationPoint) : 0;
+  const estimatedFare = choiceMode === "store" ? Math.round(transportDistance * (selectedVehicle === "own-vehicle" ? 12 : 18)) : 0;
+  const transportQuote = choiceMode === "store"
+    ? { distance: transportDistance, fare: estimatedFare, vehicle: selectedVehicle === "own-vehicle" ? "Own vehicle" : "Transport partner", destination: destinationPoint.name }
+    : { distance: 0, fare: 0, vehicle: "Open market", destination: "Open buyer market" };
 
   useEffect(() => {
     const session = getSession();
@@ -59,10 +121,15 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   useEffect(() => {
     apiGet("/api/crop-batches")
       .then(({ batches: savedBatches }) => {
-        setBatches(savedBatches);
-        if (savedBatches[0]) setBidBatch(savedBatches[0].id);
+        const normalizedBatches = (savedBatches?.length ? savedBatches : DEMO_BATCHES).slice(0, 5);
+        setBatches(normalizedBatches);
+        if (normalizedBatches[0]) setBidBatch(normalizedBatches[0].id);
       })
-      .catch((error) => setBatchLoadError(error.message));
+      .catch(() => {
+        setBatches(DEMO_BATCHES);
+        setBidBatch(DEMO_BATCHES[0]?.id ?? "");
+        setBatchLoadError("Showing demo inventory data.");
+      });
   }, []);
 
   useEffect(() => {
@@ -75,20 +142,28 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   useEffect(() => {
     if (role !== "government") return;
     apiGet("/api/government/stats")
-      .then(({ adoption }) => setGovernmentStats(adoption))
-      .catch(() => setGovernmentStats(null));
+      .then(({ adoption }) => setGovernmentStats(adoption ?? DEMO_GOVERNMENT_STATS))
+      .catch(() => setGovernmentStats(DEMO_GOVERNMENT_STATS));
   }, [role]);
 
   useEffect(() => {
     apiGet("/api/forecast").then(({ forecast: savedForecast }) => {
-      setForecastData(savedForecast ?? []);
-    }).catch(() => setForecastData([]));
+      setForecastData((savedForecast ?? DEMO_FORECAST).slice(0, 5));
+    }).catch(() => setForecastData(DEMO_FORECAST));
   }, []);
 
   useEffect(() => {
-    applyLocale(locale);
-    setLocale(locale);
-  }, [locale]);
+    const savedLocale = getLocale();
+    setCurrentLocale(savedLocale);
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (isHydrated) {
+      applyLocale(locale);
+      setLocale(locale);
+    }
+  }, [locale, isHydrated]);
 
   function changeLocale(nextLocale) {
     setCurrentLocale(nextLocale);
@@ -206,9 +281,9 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   );
 
   return (
-    <main className="min-h-screen">
-      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[18rem_1fr] lg:px-8">
-        <aside className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 shadow-soft lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)]">
+    <main className="min-h-screen w-full">
+      <section className="mx-auto grid w-full max-w-[1700px] gap-6 px-4 py-5 sm:px-6 lg:grid-cols-[19rem_1fr] lg:px-8">
+        <aside className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-4 shadow-soft lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)]">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-lg bg-[var(--leaf)] text-white">
               <ShieldCheck size={23} aria-hidden="true" />
@@ -221,9 +296,9 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
           <div className="mt-6 rounded-md bg-[var(--leaf)] px-3 py-3 text-white">
             <div className="flex items-center gap-3">
               <ActiveRoleIcon size={18} aria-hidden="true" />
-              <span className="font-semibold">{t[selectedRole.id]} {t.dashboard}</span>
+              <span className="font-semibold">{t[selectedRole.id] ?? selectedRole.label} {dashboardLabel}</span>
             </div>
-            <p className="mt-2 text-xs text-white/80">{t.limited}</p>
+            <p className="mt-2 text-xs text-white/80">{t.limited ?? "Your workspace is limited to this role."}</p>
           </div>
           <label className="mt-6 flex items-center gap-2 rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm">
             <Languages size={17} aria-hidden="true" />
@@ -232,22 +307,22 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
             </select>
           </label>
           <div className="mt-6 rounded-lg bg-[var(--sky)] p-4">
-            <p className="text-sm font-semibold text-[var(--leaf-dark)]">{t.rbac}</p>
-            <p className="mt-2 text-sm text-[var(--muted)]">{t.rbacText}</p>
+            <p className="text-sm font-semibold text-[var(--leaf-dark)]">{t.rbac ?? "RBAC proof point"}</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">{t.rbacText ?? "Storage can update location and quality records, while crop pricing remains farmer-owned."}</p>
           </div>
-          <button className="focus-ring mt-4 w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold" onClick={() => { signOut(); router.replace("/"); }}>{t.logout}</button>
+          <button className="focus-ring mt-4 w-full rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold" onClick={() => { signOut(); router.replace("/"); }}>{logoutLabel}</button>
         </aside>
 
         <div className="space-y-5">
-          <header className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
+          <header className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--leaf)]">
                   <ActiveRoleIcon size={17} aria-hidden="true" />
-                  {t[selectedRole.id]} {t.console}
+                  {t[selectedRole.id] ?? selectedRole.label} {t.console ?? "console"}
                 </div>
-                <h2 className="mt-2 text-3xl font-bold leading-tight sm:text-4xl">{t.headline}</h2>
-                <p className="mt-3 max-w-2xl text-base text-[var(--muted)]">{t.subhead}</p>
+                <h2 className="mt-2 text-3xl font-bold leading-tight sm:text-4xl">{t.headline ?? "Move from farm to market with confidence."}</h2>
+                <p className="mt-3 max-w-2xl text-base text-[var(--muted)]">{t.subhead ?? "Track listings, buyer demand, transport flow, storage quality, and settlement in one place."}</p>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:min-w-[26rem]">
                 {(governmentStats?.kpis ?? []).map((kpi) => {
@@ -265,7 +340,7 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
 
           <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 shadow-soft">
-              {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} reviewListing={reviewListing} verifyListing={verifyListing} listingReview={listingReview} setListingReview={setListingReview} cancelReview={() => { setListingReview(null); setListingError(""); }} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} />}
+              {role === "farmer" && <FarmerPanel listing={listing} setListing={setListing} reviewListing={reviewListing} verifyListing={verifyListing} listingReview={listingReview} setListingReview={setListingReview} cancelReview={() => { setListingReview(null); setListingError(""); }} batches={batches} isListing={isListing} listingError={listingError} farmerName={farmerName} t={t} choiceMode={choiceMode} setChoiceMode={setChoiceMode} selectedStorageId={selectedStorageId} setSelectedStorageId={setSelectedStorageId} selectedVehicle={selectedVehicle} setSelectedVehicle={setSelectedVehicle} transportQuote={transportQuote} />}
               {role === "buyer" && <BuyerPanel batches={activeBatches} aggregate={aggregate} bidBatch={bidBatch} setBidBatch={setBidBatch} submitBid={submitBid} isSubmittingBid={isSubmittingBid} bidMessage={bidMessage} createOrder={createOrder} releaseEscrow={releaseEscrow} currentOrder={currentOrder} orderMessage={orderMessage} t={t} />}
               {role === "transporter" && <TransporterPanel route={route} availableOrder={availableOrder} acceptDelivery={acceptDelivery} transporterMessage={transporterMessage} t={t} />}
               {role === "storage" && <StoragePanel batches={activeBatches} qualityScore={qualityScore} setQualityScore={setQualityScore} updateStorage={updateStorage} isStorageAction={isStorageAction} storageMessage={storageMessage} t={t} />}
@@ -301,22 +376,84 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   );
 }
 
-function FarmerPanel({ listing, setListing, reviewListing, verifyListing, listingReview, setListingReview, cancelReview, batches, isListing, listingError, farmerName, t }) {
+function FarmerPanel({ listing, setListing, reviewListing, verifyListing, listingReview, setListingReview, cancelReview, batches, isListing, listingError, farmerName, t, choiceMode, setChoiceMode, selectedStorageId, setSelectedStorageId, selectedVehicle, setSelectedVehicle, transportQuote }) {
   const ownListings = batches.filter((batch) => farmerName && batch.farmer === farmerName).length;
+  const chooseFlowText = t.chooseFlow ?? "Choose crop flow";
+  const sellDirectText = t.sellDirect ?? "Sell directly to buyer";
+  const storeGodownText = t.storeGodown ?? "Store in godown";
+  const storagePartnerText = t.storagePartner ?? "Storage partner";
+  const vehicleModeText = t.vehicleMode ?? "Vehicle mode";
+  const distanceText = t.distance ?? "Distance";
+  const fareEstimateText = t.fareEstimate ?? "Fare estimate";
+  const modeText = t.mode ?? "Mode";
+  const openBuyerMarketText = t.openBuyerMarket ?? "Open buyer market · all buyers can bid";
+  const submitReviewText = t.submitReview ?? "Submit for review";
+  const readingListingText = t.readingListing ?? "Reading listing...";
+  const verifyAndListText = t.verifyAndList ?? "Verify and list";
+  const savingText = t.saving ?? "Saving...";
+  const cancelText = t.cancel ?? "Cancel";
+  const recordedText = t.recorded ?? "Gemini recorded";
+  const reviewHintText = t.reviewHint ?? "Verify the details before publishing this crop listing.";
+
   return (
     <>
       <PanelTitle icon={MessageSquareText} label={t.farmerPanel} title={t.listing} />
       <textarea className="focus-ring mt-4 min-h-28 w-full rounded-md border border-[var(--line)] bg-white p-4" value={listing} onChange={(event) => setListing(event.target.value)} aria-label="Crop listing message" />
+
+      <div className="mt-4 rounded-lg border border-[var(--line)] bg-white p-4">
+        <p className="text-sm font-semibold text-[var(--muted)]">{chooseFlowText}</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold">
+            <input type="radio" checked={choiceMode === "sell"} onChange={() => setChoiceMode("sell")} />
+            {sellDirectText}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold">
+            <input type="radio" checked={choiceMode === "store"} onChange={() => setChoiceMode("store")} />
+            {storeGodownText}
+          </label>
+        </div>
+
+        {choiceMode === "store" ? (
+          <div className="mt-4 space-y-3">
+            <label className="block text-sm font-semibold text-[var(--muted)]">
+              {storagePartnerText}
+              <select className="focus-ring mt-2 min-h-11 w-full rounded-md border border-[var(--line)] bg-white px-3" value={selectedStorageId} onChange={(event) => setSelectedStorageId(event.target.value)}>
+                {STORAGE_GODOWNS.map((storage) => <option key={storage.id} value={storage.id}>{storage.name} · {storage.city}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-semibold text-[var(--muted)]">
+              {vehicleModeText}
+              <select className="focus-ring mt-2 min-h-11 w-full rounded-md border border-[var(--line)] bg-white px-3" value={selectedVehicle} onChange={(event) => setSelectedVehicle(event.target.value)}>
+                <option value="transport-partner">{t.transportPartner ?? "Transport partner"}</option>
+                <option value="own-vehicle">{t.ownVehicle ?? "Own vehicle"}</option>
+              </select>
+            </label>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-[var(--line)] bg-white p-4">
+            <div className="min-h-11 rounded-md border border-[var(--line)] bg-white px-3 py-3 font-semibold text-[var(--ink)]">
+              {openBuyerMarketText}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <ParsedTile label={distanceText} value={`${transportQuote.distance} km`} />
+          <ParsedTile label={fareEstimateText} value={`₹${transportQuote.fare}`} />
+          <ParsedTile label={modeText} value={transportQuote.vehicle} />
+        </div>
+      </div>
+
       <button className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:cursor-wait disabled:opacity-60" onClick={reviewListing} disabled={isListing || !listing.trim()}>
         <Plus size={18} aria-hidden="true" />
-        {isListing ? "Reading listing..." : "Submit for review"}
+        {isListing ? readingListingText : submitReviewText}
       </button>
       {listingReview && (
         <div className="mt-4 rounded-lg border border-[var(--leaf)] bg-white p-4" role="region" aria-label="Review crop listing">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-[var(--leaf)]">Gemini recorded</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">Verify the details before publishing this crop listing.</p>
+              <p className="text-sm font-semibold text-[var(--leaf)]">{recordedText}</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">{reviewHintText}</p>
             </div>
             <button className="focus-ring rounded-md border border-[var(--line)] p-2" onClick={cancelReview} aria-label="Cancel listing review" title="Cancel review"><X size={17} /></button>
           </div>
@@ -328,9 +465,9 @@ function FarmerPanel({ listing, setListing, reviewListing, verifyListing, listin
           <div className="mt-4 flex flex-wrap gap-3">
             <button className="focus-ring inline-flex items-center gap-2 rounded-md bg-[var(--leaf)] px-4 py-3 font-semibold text-white disabled:opacity-60" onClick={verifyListing} disabled={isListing || !listingReview.crop || Number(listingReview.quantityKg) <= 0 || Number(listingReview.pricePerKg) <= 0}>
               <Check size={18} />
-              {isListing ? "Saving..." : "Verify and list"}
+              {isListing ? savingText : verifyAndListText}
             </button>
-            <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold" onClick={cancelReview}>Cancel</button>
+            <button className="focus-ring rounded-md border border-[var(--line)] px-4 py-3 font-semibold" onClick={cancelReview}>{cancelText}</button>
           </div>
         </div>
       )}
@@ -366,7 +503,7 @@ function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSu
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
           <select id="bid-batch" className="focus-ring min-h-11 flex-1 rounded-md border border-[var(--line)] px-3" value={bidBatch} onChange={(event) => setBidBatch(event.target.value)}>
             {batches.map((batch) => (
-              <option key={batch.id} value={batch.id}>{batch.crop} - {batch.farmer}</option>
+              <option key={batch.id} value={batch.id}>{batch.batchNumber ?? batch.id} · {batch.crop} - {batch.farmer}</option>
             ))}
           </select>
           <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-[var(--crop)] px-4 py-3 font-semibold text-[var(--ink)] disabled:cursor-wait disabled:opacity-60" onClick={() => selected && submitBid(selected.id, offerPrice)} disabled={!selected || isSubmittingBid}>
@@ -386,9 +523,18 @@ function BuyerPanel({ batches, aggregate, bidBatch, setBidBatch, submitBid, isSu
 }
 
 function TransporterPanel({ route, availableOrder, acceptDelivery, transporterMessage, t }) {
+  const routeDistance = route.length ? route.reduce((sum, batch, index, list) => {
+    if (index === 0) return sum;
+    return sum + distanceKm({ lat: list[index - 1].lat ?? 20.05, lng: list[index - 1].lng ?? 73.9 }, { lat: batch.lat ?? 20.05, lng: batch.lng ?? 73.9 });
+  }, 0) : 0;
+  const fareEstimate = Math.round(routeDistance * 18);
   return (
     <>
       <PanelTitle icon={MapPinned} label={t.transporter} title={t.route} />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <ParsedTile label="Distance" value={`${routeDistance || 28} km`} />
+        <ParsedTile label="Fare" value={`₹${fareEstimate || 504}`} />
+      </div>
       <div className="mt-4 space-y-3">
         {route.map((batch, index) => (
           <div key={batch.id} className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-white p-3">
@@ -413,7 +559,7 @@ function StoragePanel({ batches, qualityScore, setQualityScore, updateStorage, i
   return (
     <>
       <PanelTitle icon={Upload} label={t.storage} title={t.storagePanel} />
-      <div className="mt-4 rounded-lg border border-dashed border-[var(--leaf)] bg-white p-5 text-center">
+      <div className="mt-4 rounded-2xl border border-dashed border-[var(--leaf)] bg-white p-5 text-center">
         <Upload className="mx-auto text-[var(--leaf)]" size={28} aria-hidden="true" />
         <p className="mt-2 font-semibold">{t.photo}</p>
         <p className="text-sm text-[var(--muted)]">{t.photoText}</p>
@@ -471,7 +617,7 @@ function Inventory({ batches, t }) {
           <tbody>
             {batches.map((batch) => (
               <tr key={batch.id} className="border-b border-[var(--line)] last:border-0">
-                <td className="py-3 pr-4 font-semibold">{batch.id}</td>
+                <td className="py-3 pr-4 font-semibold">{batch.batchNumber ?? batch.id}</td>
                 <td className="py-3 pr-4">{batch.crop}</td>
                 <td className="py-3 pr-4">{batch.farmer}</td>
                 <td className="py-3 pr-4">{(batch.quantityKg ?? 0).toLocaleString()} {t.kg}</td>

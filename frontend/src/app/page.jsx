@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, ChartNoAxesCombined, Languages, Leaf, MapPinned, ShieldCheck, Warehouse } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { getSession } from "@/lib/auth-client";
 import { applyLocale, getLocale, languageOptions, setLocale } from "@/lib/i18n";
 
 const copy = {
@@ -18,11 +20,26 @@ const copy = {
 };
 
 export default function Home() {
-  const [locale, setCurrentLocale] = useState(getLocale);
+  const router = useRouter();
+  const [locale, setCurrentLocale] = useState("en");
+  const [isHydrated, setIsHydrated] = useState(false);
   const t = copy[locale] ?? copy.en;
   const roles = [
     [t.roles[0][0], t.roles[0][1], Leaf], [t.roles[1][0], t.roles[1][1], ChartNoAxesCombined], [t.roles[2][0], t.roles[2][1], MapPinned], [t.roles[3][0], t.roles[3][1], Warehouse]
   ];
+
+  useEffect(() => {
+    const savedLocale = getLocale();
+    setCurrentLocale(savedLocale);
+    setIsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (isHydrated) {
+      applyLocale(locale);
+      setLocale(locale);
+    }
+  }, [locale, isHydrated]);
 
   function changeLocale(nextLocale) {
     setCurrentLocale(nextLocale);
@@ -30,18 +47,36 @@ export default function Home() {
     applyLocale(nextLocale);
   }
 
+  function goToEntry() {
+    const session = getSession();
+    if (session) {
+      router.replace(`/dashboard/${session.user.role}`);
+      return;
+    }
+    router.push("/signup");
+  }
+
+  function goToLogin() {
+    const session = getSession();
+    if (session) {
+      router.replace(`/dashboard/${session.user.role}`);
+      return;
+    }
+    router.push("/login");
+  }
+
   return (
     <main className="min-h-screen px-5 py-5 sm:px-8" dir={locale === "ur" ? "rtl" : "ltr"} lang={locale}>
       <nav className="mx-auto flex max-w-7xl items-center justify-between">
         <Link href="/" className="flex items-center gap-3 font-semibold"><span className="grid h-10 w-10 place-items-center rounded-full bg-[var(--leaf)] text-white"><Leaf size={20} /></span><span>DirectAgri<small className="block text-xs font-normal text-[var(--muted)]">SIH26033</small></span></Link>
-        <div className="flex items-center gap-3"><label className="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm"><Languages size={16} className="text-[var(--leaf)]" /><select value={locale} onChange={(event) => changeLocale(event.target.value)} className="bg-transparent font-semibold" aria-label="Language">{languageOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><Link href="/login" className="hidden rounded-lg px-3 py-2 text-sm font-semibold sm:block">{t.login}</Link><Link href="/signup" className="rounded-lg bg-[var(--leaf-dark)] px-4 py-2.5 text-sm font-semibold text-white">{t.enter}</Link></div>
+        <div className="flex items-center gap-3"><label className="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-white px-3 py-2 text-sm"><Languages size={16} className="text-[var(--leaf)]" /><select value={locale} onChange={(event) => changeLocale(event.target.value)} className="bg-transparent font-semibold" aria-label="Language">{languageOptions.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><button type="button" onClick={goToLogin} className="hidden rounded-lg px-3 py-2 text-sm font-semibold sm:block">{t.login}</button><button type="button" onClick={goToEntry} className="rounded-lg bg-[var(--leaf-dark)] px-4 py-2.5 text-sm font-semibold text-white">{t.enter}</button></div>
       </nav>
 
       <section className="mx-auto max-w-7xl pb-14 pt-16 lg:pb-20 lg:pt-24">
         <p className="eyebrow">{t.eyebrow}</p>
         <h1 className="mt-6 max-w-4xl text-5xl font-bold leading-[0.98] sm:text-7xl">{t.title}</h1>
         <p className="mt-7 max-w-2xl text-lg leading-8 text-[var(--muted)]">{t.subhead}</p>
-        <div className="mt-8 flex flex-wrap gap-3"><Link href="/signup" className="inline-flex items-center gap-3 rounded-lg bg-[var(--leaf)] px-5 py-3.5 font-semibold text-white">{t.enter} <ArrowRight size={18} /></Link><Link href="/signup" className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-5 py-3.5 font-semibold shadow-soft">{t.role}</Link></div>
+        <div className="mt-8 flex flex-wrap gap-3"><button type="button" onClick={goToEntry} className="inline-flex items-center gap-3 rounded-lg bg-[var(--leaf)] px-5 py-3.5 font-semibold text-white">{t.enter} <ArrowRight size={18} /></button><button type="button" onClick={goToEntry} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-5 py-3.5 font-semibold shadow-soft">{t.role}</button></div>
         <div className="mt-10 grid max-w-3xl gap-4 sm:grid-cols-3"><Stat value="25–35%" label={t.stats[0]} /><Stat value="4–6" label={t.stats[1]} /><Stat value="100%" label={t.stats[2]} /></div>
       </section>
 

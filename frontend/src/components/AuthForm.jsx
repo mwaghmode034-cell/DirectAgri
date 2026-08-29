@@ -1,20 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowRight, Leaf, LockKeyhole, Mail, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, Leaf, LockKeyhole, Mail, Phone, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn, signUp } from "@/lib/auth-client";
+import { getSession, signIn, signUp } from "@/lib/auth-client";
 import { applyLocale, authTranslations, getLocale, languageOptions, setLocale } from "@/lib/i18n";
 
 export default function AuthForm({ mode = "login" }) {
     const isSignUp = mode === "signup";
     const router = useRouter();
-    const [locale, setCurrentLocale] = useState(getLocale);
-    const [form, setForm] = useState({ name: "", email: "", password: "", role: "farmer" });
+    const [locale, setCurrentLocale] = useState("en");
+    const [isHydrated, setIsHydrated] = useState(false);
+    const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", role: "farmer" });
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const t = authTranslations[locale] ?? authTranslations.en;
+
+    useEffect(() => {
+        const savedLocale = getLocale();
+        setCurrentLocale(savedLocale);
+        setIsHydrated(true);
+        const session = getSession();
+        if (session) router.replace(`/dashboard/${session.user.role}`);
+    }, [router]);
+
+    useEffect(() => {
+        if (isHydrated) {
+            applyLocale(locale);
+            setLocale(locale);
+        }
+    }, [locale, isHydrated]);
 
     function changeLocale(nextLocale) {
         setCurrentLocale(nextLocale);
@@ -63,6 +79,7 @@ export default function AuthForm({ mode = "login" }) {
                     </div>
                     <form className="space-y-4" onSubmit={submit}>
                         {isSignUp && <Field icon={UserRound} label={t.name} name="name" value={form.name} onChange={updateField} placeholder="Asha Pawar" />}
+                        {isSignUp && <Field icon={Phone} label="Mobile number" name="phone" type="tel" value={form.phone} onChange={updateField} placeholder="+91 98765 43210" />}
                         <Field icon={Mail} label={t.email} name="email" type="email" value={form.email} onChange={updateField} placeholder="you@example.com" />
                         <Field icon={LockKeyhole} label={t.password} name="password" type="password" value={form.password} onChange={updateField} placeholder="At least 6 characters" minLength={6} />
                         <div className="flex justify-end">
