@@ -1,10 +1,18 @@
-# DirectAgri
+# 🌾 DirectAgri
+
+**A role-based agricultural marketplace that cuts out middlemen and brings transparency to India's farm-to-market supply chain.**
+
+Built for **SIH 2026** by **Team CodeDev's**
+
+[![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?logo=node.js&logoColor=white)](#)
+[![Next.js](https://img.shields.io/badge/Next.js-Frontend-000000?logo=next.js&logoColor=white)](#)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Database-47A248?logo=mongodb&logoColor=white)](#)
+[![License](https://img.shields.io/badge/License-Academic%2FHackathon-blue)](#license)
+
+---
 
 ## Team
 
-**Team Name:** CodeDev's
-
-**Team Members:**
 - Mahesh
 - Shrevan
 - Shreyash
@@ -12,144 +20,85 @@
 - Shubham
 - Akanksha
 
-DirectAgri is a smart agricultural marketplace designed to reduce middlemen exploitation and bring transparency to the farm-to-market supply chain. It connects farmers, buyers, transporters, storage partners, and government stakeholders in a single digital ecosystem.
+---
 
-The platform focuses on one big idea: empower farmers with better pricing, more visibility, and direct market access while making logistics, storage, and procurement more efficient and trustworthy.
+## The Problem
 
+India's agriculture supply chain loses value at every handoff:
 
-## Why this project exists
+| Problem | Impact |
+|---|---|
+| Middlemen-heavy chain | Farmers capture a fraction of end market price |
+| Price uncertainty | Delayed, unpredictable payments |
+| Poor logistics coordination | Wasted produce, inefficient routes |
+| Limited storage/quality visibility | Spoilage, disputes over quality |
+| Fragmented oversight | No unified data for policy or intervention |
 
-India’s agriculture ecosystem is often affected by:
+## The Solution
 
-- low farmer income due to intermediaries
-- price uncertainty and delayed payments
-- poor logistics coordination
-- limited storage and quality visibility
-- fragmented government oversight
+DirectAgri connects **five stakeholders** — Farmers, Buyers, Transporters, Storage Partners, and Government — in one digital ecosystem with role-based dashboards, AI-assisted listing, escrow-protected orders, and route optimization.
 
-DirectAgri addresses these problems by creating a digital marketplace with role-based access, market forecasting, route optimization, storage tracking, and escrow-style order settlement.
+```
+   FARMER  →  lists crop batch (NLP input)
+      │
+      ▼
+   BUYER   →  bids / bulk order → escrow created
+      │
+      ▼
+TRANSPORTER →  optimized delivery route
+      │
+      ▼
+  STORAGE   →  quality check-in/out, inventory tracking
+      │
+      ▼
+GOVERNMENT  →  reads all activity for oversight & benchmarks
+```
 
+---
 
-## Product vision
+## Core Features
 
-DirectAgri acts like a digital agriculture network where each stakeholder has a clear role:
+### 👨‍🌾 Farmer Dashboard
+- Natural-language crop listing (e.g. *"2 tons onion at rate 28"* → structured batch record)
+- Choice of direct sale or godown storage
+- Transport/storage cost estimates + demand forecast charts
+- Inventory & listing status management
 
-- Farmers list produce and retain control of their inventory
-- Buyers inspect listings and place bids or bulk orders
-- Transporters accept optimized delivery jobs
-- Storage partners record quality and inventory movement
-- Government monitors performance, adoption, and demand trends
+### 🛒 Buyer Dashboard
+- Browse batches, place offers, aggregate multiple lots into one order
+- Escrow-protected purchase orders — payment releases only after quality + delivery verification
 
-This creates a more transparent, faster, and fairer agricultural commerce system.
+### 🚚 Transporter Dashboard
+- Accept delivery jobs, view route-optimized suggestions, execute trips in a structured workflow
 
+### 🏬 Storage Dashboard
+- Check batches in/out, record quality grading with visual evidence, track movement without breaking ownership rules
 
-## Key features
+### 🏛️ Government Dashboard
+- Adoption metrics, district/crop activity overview, audit logs, market benchmarks
 
-### 1. Farmer dashboard
+### 🧠 Market Forecast Module
+Price & demand forecasting from benchmark data — helps farmers plan and buyers time procurement.
 
-Farmers can:
+### 🔐 Role-Based Access Control
+Every action is permission-gated (e.g. only Farmers price crops; Storage users can't touch pricing).
 
-- post crop listings using natural language input
-- automatically parse crop details like quantity, crop type, and price
-- choose between direct sale or godown storage
-- estimate transport and storage costs
-- see demand forecast trends for crops
-- manage inventory and product status
+### 📋 Audit Trail
+All key actions are logged for accountability — critical for trust in agri-trade and government use.
 
-### 2. Buyer dashboard
+---
 
-Buyers can:
+## Tech Stack
 
-- browse available batches
-- place offers on specific crop lots
-- aggregate multiple batches into one order
-- create purchase orders with escrow-style protection
-- release payments after quality and delivery are verified
+| Layer | Technologies |
+|---|---|
+| **Frontend** | Next.js, React, Tailwind CSS, Recharts, Lucide Icons |
+| **Backend** | Node.js, Express, MongoDB, JWT, Zod, Nodemailer, Twilio |
+| **AI/NLP** | Gemini API (optional) with rule-based offline fallback parser |
 
-### 3. Transporter dashboard
+---
 
-Transporters can:
-
-- accept delivery assignments
-- view route optimization suggestions
-- access delivery tasks based on nearby batches
-- handle trip execution in a structured workflow
-
-### 4. Storage dashboard
-
-Storage partners can:
-
-- check in harvested batches
-- record quality grading and visual evidence
-- check out inventory when needed
-- update batch movement status while preserving ownership rules
-
-### 5. Government dashboard
-
-Government stakeholders can:
-
-- view adoption metrics
-- see district/crop activity overview
-- monitor audit logs and transaction flow
-- inspect public market benchmarks and demand signals
-
-### 6. Market forecast module
-
-The app includes price and demand forecasting using benchmark data to help users understand crop demand trends. This gives farmers better planning insight and helps buyers estimate procurement opportunities.
-
-### 7. Role-based access control (RBAC)
-
-Every user role has controlled permissions. For example:
-
-- Farmers can list and price crops
-- Buyers cannot create crop listings
-- Storage users cannot change crop pricing
-- Transporters only get logistics-related actions
-
-This keeps the ecosystem fair and prevents misuse.
-
-### 8. Security and audit trail
-
-The app stores actions in audit logs to maintain accountability. This is essential for trust in agricultural trade and in government oversight workflows.
-
-
-## Tech stack
-
-### Frontend
-
-- Next.js
-- React
-- Tailwind CSS
-- Recharts for graphs and analytics
-- Lucide icons for UI polish
-
-### Backend
-
-- Node.js
-- Express
-- MongoDB
-- JWT for authentication
-- Zod for validation
-- Nodemailer for email-based reset flows
-- Twilio for optional SMS workflows
-
-### AI / NLP layer
-
-- Gemini API integrated optionally
-- Rule-based fallback parser for local/offline functioning
-
-
-## Architecture overview
-
-The project is structured into two major workspaces:
-
-- frontend: user interface and role dashboards
-- backend: API server, business logic, auth, DB access, and forecasting endpoints
-
-The system is designed so the frontend and backend can work independently and be deployed separately.
-
-
-## Project structure
+## Project Structure
 
 ```text
 DirectAgri/
@@ -164,106 +113,47 @@ DirectAgri/
 │   │   ├── server.js
 │   │   ├── config/
 │   │   ├── lib/
-│   │   ├── middleware/
-│   │   └── ...
+│   │   └── middleware/
 │   └── test/
-├── frontend/
-│   ├── package.json
-│   ├── next.config.js
-│   ├── public/
-│   └── src/
-│       ├── app/
-│       ├── components/
-│       ├── lib/
-│       └── ...
-└── node_modules/
+└── frontend/
+    ├── package.json
+    ├── next.config.js
+    ├── public/
+    └── src/
+        ├── app/
+        ├── components/
+        └── lib/
 ```
 
+---
 
-## How the platform works
+## Getting Started
 
-### 1. User registration and login
-
-Users sign up with a role such as farmer, buyer, transporter, storage, or government. The backend validates their identity, creates a JWT token, and stores user details.
-
-### 2. Crop listing process
-
-A farmer writes a listing like:
-
-> 2 tons onion at rate 28
-
-The system parses it using NLP or fallback logic and converts it into a structured crop batch record.
-
-### 3. Buyer order flow
-
-A buyer selects one or more crop batches, places an order, and escrow is created. This ensures payment stays protected until delivery and quality checks are satisfied.
-
-### 4. Logistics and delivery
-
-The transporter accepts assigned jobs and uses route optimization to minimize overall travel time and distance.
-
-### 5. Storage and quality checks
-
-Storage providers check inventory in and out, maintain quality records, and ensure product conditions are tracked.
-
-### 6. Government monitoring
-
-The government dashboard reads the same marketplace activity to measure adoption, price signals, and operational performance.
-
-
-## Demo roles and credentials
-
-The project includes demo users for easy testing.
-
-| Role | Email | Password |
-|------|-------|----------|
-| Farmer | farmer@directagri.dev | demo1234 |
-| Buyer | buyer@directagri.dev | demo1234 |
-| Transporter | transporter@directagri.dev | demo1234 |
-| Storage | storage@directagri.dev | demo1234 |
-| Government | government@directagri.dev | demo1234 |
-
-These demo accounts are created automatically when the backend starts in dev mode.
-
-
-## Environment setup
-
-### 1. Install dependencies
-
-From the project root:
-
+### 1. Clone & install root dependencies
 ```bash
+cd DirectAgri
 npm install
 ```
 
 ### 2. Start the backend
-
 ```bash
-cd DirectAgri/backend
+cd backend
 npm install
 npm run dev
 ```
-
-The backend runs at:
-
-- http://localhost:4000
+Runs at **http://localhost:4000**
 
 ### 3. Start the frontend
-
 ```bash
-cd DirectAgri/frontend
+cd ../frontend
 npm install
 npm run dev
 ```
+Runs at **http://localhost:3000**
 
-The web app runs at:
+### Environment Variables
 
-- http://localhost:3000
-
-
-## Important environment variables
-
-Create a `.env` file in the backend with values similar to:
+Create `backend/.env`:
 
 ```env
 MONGODB_URI=your_mongodb_connection_string
@@ -282,128 +172,61 @@ MAIL_FROM=your_email@gmail.com
 GEMINI_API_KEY=your_optional_key
 GEMINI_MODEL=gemini-2.5-flash
 ```
+> For Gmail, use an **App Password**, not your normal password.
 
-For Gmail, use an app password instead of your normal password.
+---
 
+## Demo Accounts
 
-## API behaviour
+| Role | Email | Password |
+|---|---|---|
+| Farmer | farmer@directagri.dev | demo1234 |
+| Buyer | buyer@directagri.dev | demo1234 |
+| Transporter | transporter@directagri.dev | demo1234 |
+| Storage | storage@directagri.dev | demo1234 |
+| Government | government@directagri.dev | demo1234 |
 
-The backend exposes endpoints for:
+Created automatically when the backend starts in dev mode.
 
-- authentication (signup, login, forgot password, reset password)
-- crop batch listing creation and updates
-- NLP parsing for product input
-- price forecast retrieval
-- route optimization
-- order aggregation
-- transporter assignment
-- storage check-in/out
-- government stats and audit inspection
-
-These APIs are role-protected and validate data before processing.
-
+---
 
 ## Testing
 
-The backend includes automated tests for major flows, including:
-
-- health endpoint
-- NLP parsing
-- role enforcement
-- crop listing lifecycle
-- order, storage, and payment workflows
-
-Run tests with:
-
 ```bash
-cd DirectAgri/backend
+# Backend tests — health, NLP parsing, RBAC, listing lifecycle, order/storage/payment flows
+cd backend
 npm test
-```
 
-To validate frontend build quality:
-
-```bash
-cd DirectAgri/frontend
+# Frontend build check
+cd ../frontend
 npm run build
 ```
 
+---
 
-## Current strengths of the project
+## Roadmap
 
-- complete multi-role digital ecosystem
-- realistic agricultural workflow design
-- market intelligence with forecast charts
-- role-based permissions and audit safety
-- scalable architecture for future production deployment
-- multilingual UI support for broader rural adoption
+**✅ Completed**
+- Multi-role dashboards · Crop listing flow · Buyer order aggregation
+- Route optimization · Storage quality tracking · Government metrics panel
+- NLP-based crop parsing · Auth + forgot-password flow
 
+**🔜 Planned**
+- Real payment gateway integration
+- Production-grade SMS/WhatsApp delivery
+- Investor-grade analytics
+- Full multi-cloud deployment
+- Mobile-first PWA
+- AI-based crop quality analysis (image-based grading)
 
-## MVP and future roadmap
+---
 
-### Completed in the current version
+## Why It Matters
 
-- multi-role dashboards
-- crop listing flow
-- buyer order aggregation
-- route optimization
-- storage quality tracking
-- government metrics panel
-- NLP-based crop parsing
-- auth and forgot-password flow
+DirectAgri isn't just a hackathon demo — it's a working model of how digital infrastructure can shift value back toward farmers by removing opaque intermediaries, protecting payments via escrow, and giving every stakeholder (down to the government) a shared source of truth.
 
-### Future improvements
-
-- real payment gateway integration
-- production-grade SMS/WhatsApp delivery
-- stronger investor-grade analytics
-- full deployment on separate cloud hosts
-- mobile-first PWA enhancements
-- deeper AI-based crop quality analysis
-
-
-## Why DirectAgri matters
-
-DirectAgri is more than just a demo website. It represents a practical solution to a real agricultural problem: making the produce supply chain more transparent, fair, and efficient.
-
-By reducing middlemen dependency and enabling direct coordination between farmers and market participants, the system helps improve:
-
-- farmer income
-- buyer trust
-- logistics efficiency
-- storage quality visibility
-- government oversight
-
-
-## Team
-
-Developed as part of SIH 2026 with the goal of building a meaningful agricultural innovation prototype.
-
+---
 
 ## License
 
-This project is built for academic and hackathon use under its current repository rules.
-
-
-## Quick start summary
-
-```bash
-cd DirectAgri
-npm install
-
-cd backend
-npm install
-npm run dev
-
-cd ../frontend
-npm install
-npm run dev
-```
-
-Then open:
-
-- http://localhost:3000
-
-
-## Final note
-
-DirectAgri is designed to show how digital agriculture can move from fragmented, trustless transactions to an integrated and transparent system. It is a strong prototype for showcasing how technology can improve value distribution in the agricultural supply chain.
+Built for academic and hackathon (SIH 2026) use. *(Consider adding an explicit license — e.g. MIT — if you plan to open-source or extend this beyond the hackathon.)*

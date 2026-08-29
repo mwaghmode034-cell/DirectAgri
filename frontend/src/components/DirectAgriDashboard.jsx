@@ -124,10 +124,15 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   useEffect(() => {
     apiGet("/api/crop-batches")
       .then(({ batches: savedBatches }) => {
-        const normalizedBatches = savedBatches ?? [];
+        const normalizedBatches = (savedBatches && savedBatches.length ? savedBatches : DEMO_BATCHES);
         setBatches(normalizedBatches);
         setSelectedBatchIds(normalizedBatches.filter((batch) => batch.status !== "SOLD").map((batch) => batch.id));
         if (normalizedBatches[0]) setBidBatch(normalizedBatches[0].id);
+        if (!savedBatches || savedBatches.length === 0) {
+          setBatchLoadError("No live crop listings were found, so demo inventory is being displayed for the current session.");
+        } else {
+          setBatchLoadError("");
+        }
       })
       .catch(() => {
         setBatches(DEMO_BATCHES);
