@@ -145,7 +145,6 @@ export default function DirectAgriDashboard({ initialRole = "farmer" }) {
   }, [role]);
 
   useEffect(() => {
-    if (role !== "farmer" && role !== "government") return;
     apiGet("/api/forecast")
       .then(({ forecast }) => {
         const liveForecast = (forecast ?? []).map((item) => ({

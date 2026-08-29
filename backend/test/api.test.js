@@ -59,6 +59,32 @@ test("role isolation blocks a buyer from creating a crop listing", async () => {
   assert.equal(response.status, 401);
 });
 
+test("forgot-password does not expose the reset code in the API response", async () => {
+  const signupResponse = await request("/api/auth/signup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "Test User",
+      email: "",
+      phone: "+919999999999",
+      password: "demo1234",
+      role: "buyer"
+    })
+  });
+  assert.equal(signupResponse.status, 201);
+
+  const forgotResponse = await request("/api/auth/forgot-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ phone: "+919999999999" })
+  });
+
+  assert.equal(forgotResponse.status, 503);
+  const payload = await forgotResponse.json();
+  assert.equal(payload.resetCode, undefined);
+  assert.match(payload.error || "", /reset code|configuration/i);
+});
+
 test("completes listing, order, transport, storage, and escrow lifecycle", async () => {
   const farmer = await login("farmer@directagri.dev");
   const buyer = await login("buyer@directagri.dev");

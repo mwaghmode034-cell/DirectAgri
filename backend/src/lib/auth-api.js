@@ -211,24 +211,20 @@ export async function forgotPassword(request, response, next) {
         }
 
         if (!sendSucceeded) {
+            console.warn("Password reset code generated but no delivery provider was configured for this account.");
             if (!isPhoneFlow) {
                 return response.status(503).json({
                     error: "Unable to send the reset email. Check the Gmail SMTP configuration and try again."
                 });
             }
-            return response.json({
-                message: isPhoneFlow
-                    ? "Use this mobile reset code to set a new password. It expires in 15 minutes."
-                    : "Use this reset code to set a new password. It expires in 15 minutes.",
-                resetCode,
-                deliveryMode: isPhoneFlow ? "sms" : "email"
+            return response.status(503).json({
+                error: "Unable to send the reset SMS. Check the Twilio configuration and try again."
             });
         }
 
         if (isPhoneFlow) {
             return response.json({
                 message: "A reset code has been sent to your mobile number.",
-                resetCode,
                 deliveryMode: "sms"
             });
         }
